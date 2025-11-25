@@ -1,10 +1,13 @@
-const START_ADDRESS: usize = 0x200;
+mod font;
+
 pub const DISPLAY_X: usize = 64;
 pub const DISPLAY_Y: usize = 32;
 
+const START_ADDRESS: usize = 0x200;
+
 pub struct Chip8 {
     pub memory: [u8; 4096],
-    pub display: [bool; DISPLAY_X * DISPLAY_Y],
+    pub display: [[bool; DISPLAY_X]; DISPLAY_Y],
 
     pub pc: u16,
     pub i: u16,
@@ -19,7 +22,7 @@ impl Chip8 {
     pub fn new() -> Self {
         Chip8 {
             memory: [0; 4096],
-            display: [false; DISPLAY_X * DISPLAY_Y],
+            display: [[false; DISPLAY_X]; DISPLAY_Y],
             pc: START_ADDRESS as u16,
             i: 0,
             v: [0; 16],
@@ -30,8 +33,9 @@ impl Chip8 {
     }
 
     pub fn load_rom(&mut self, rom: &[u8]) {
-        let copy_size = std::cmp::min(rom.len(), self.memory.len() - START_ADDRESS);
-        self.memory[START_ADDRESS..START_ADDRESS + copy_size].copy_from_slice(&rom[..copy_size]);
+        let start = START_ADDRESS as usize;
+        let end = start + rom.len();
+        self.memory[start..end].copy_from_slice(rom);
     }
 
     pub fn cycle(&mut self) {
@@ -76,7 +80,7 @@ impl Chip8 {
     fn execute(&mut self, opcode: Opcode) {
         match opcode {
             Opcode::ClearDisplay => {
-                self.display.fill(false);
+                self.display = [[false; DISPLAY_X]; DISPLAY_Y];
             }
             Opcode::Jump { nnn } => {
                 self.pc = nnn;
@@ -111,13 +115,13 @@ impl Chip8 {
             for col in 0..col_count {
                 // If current sprite bit is non-zero
                 if (sprite_byte & (0x80 >> col)) != 0 {
-                    let index = (y_pos + row) * DISPLAY_X + (x_pos + col);
+                    let pixel = &mut self.display[y_pos + row][x_pos + col];
 
                     // Flip the pixel
-                    self.display[index] ^= true;
+                    *pixel ^= true;
 
                     // If any pixel was erased, set VF to 1
-                    if !self.display[index] {
+                    if !*pixel {
                         self.v[0xF] = 1;
                     }
                 }
