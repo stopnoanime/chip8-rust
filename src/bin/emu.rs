@@ -10,7 +10,7 @@ async fn main() {
     chip8.load_rom(ROM_DATA);
 
     loop {
-        chip8.cycle();
+        chip8.cpu_cycle();
 
         // Scale to fit the screen
         let scale_x = screen_width() / DISPLAY_X as f32;
