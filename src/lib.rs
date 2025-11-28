@@ -3,12 +3,20 @@ mod font;
 pub const DISPLAY_X: usize = 64;
 pub const DISPLAY_Y: usize = 32;
 
+pub const CPU_HZ: u16 = 700;
+pub const TIMER_HZ: u16 = 60;
+
+pub const CPU_TIME_STEP: f32 = 1.0 / CPU_HZ as f32;
+pub const TIMER_TIME_STEP: f32 = 1.0 / TIMER_HZ as f32;
+
+pub type Display = [[bool; DISPLAY_X]; DISPLAY_Y];
+
 const FONT_START_ADDRESS: usize = 0x50;
 const ROM_START_ADDRESS: usize = 0x200;
 
 pub struct Chip8 {
     pub memory: [u8; 4096],
-    pub display: [[bool; DISPLAY_X]; DISPLAY_Y],
+    pub display: Display,
 
     pub pc: u16,
     pub i: u16,
@@ -19,6 +27,12 @@ pub struct Chip8 {
     pub sound_timer: u8,
 
     pub keypad: [bool; 16],
+}
+
+impl Default for Chip8 {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Chip8 {
@@ -42,6 +56,8 @@ impl Chip8 {
 
         let rom_end = ROM_START_ADDRESS + rom.len();
         self.memory[ROM_START_ADDRESS..rom_end].copy_from_slice(rom);
+
+        self.pc = ROM_START_ADDRESS as u16;
     }
 
     // Should be about 700Hz
