@@ -24,12 +24,6 @@ const KEY_MAP: [KeyCode; 16] = [
     KeyCode::V,    // 0x0F
 ];
 
-fn update_keypad(chip8: &mut Chip8) {
-    for (i, &key) in KEY_MAP.iter().enumerate() {
-        chip8.keypad[i] = is_key_down(key);
-    }
-}
-
 fn draw_display(display: &Display) {
     // Scale to fit the screen
     let scale_x = screen_width() / DISPLAY_X as f32;
@@ -67,7 +61,8 @@ async fn main() {
 
     let rom = std::fs::read(&args[1]).expect("Failed to read ROM file");
 
-    let mut chip8 = Chip8::new();
+    let is_key_down_cb = |key: u8| is_key_down(KEY_MAP[key as usize]);
+    let mut chip8 = Chip8::new(Box::new(is_key_down_cb));
     chip8.load_rom(&rom);
 
     let mut audio_stream =
@@ -90,14 +85,12 @@ async fn main() {
         cpu_dt_accumulator += dt;
         timer_dt_accumulator += dt;
 
-        update_keypad(&mut chip8);
-
         while cpu_dt_accumulator >= CPU_TIME_STEP {
             cpu_dt_accumulator -= CPU_TIME_STEP;
 
             match chip8.cpu_cycle() {
-                CycleResult::Draw => {
-                    // Limit to one draw per frame
+                CycleResult::NextFrame => {
+                    // Don't execute further cycles this frame
                     break;
                 }
                 CycleResult::UnknownOpcode { addr, opcode } => {
