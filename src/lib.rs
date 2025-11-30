@@ -271,9 +271,18 @@ impl Chip8 {
     fn execute_alu(&mut self, x: u8, y: u8, op: OpcodeALU) {
         match op {
             OpcodeALU::Set => self.v[x as usize] = self.v[y as usize],
-            OpcodeALU::Or => self.v[x as usize] |= self.v[y as usize],
-            OpcodeALU::And => self.v[x as usize] &= self.v[y as usize],
-            OpcodeALU::Xor => self.v[x as usize] ^= self.v[y as usize],
+            OpcodeALU::Or => {
+                self.v[x as usize] |= self.v[y as usize];
+                self.v[0xF] = 0;
+            }
+            OpcodeALU::And => {
+                self.v[x as usize] &= self.v[y as usize];
+                self.v[0xF] = 0;
+            }
+            OpcodeALU::Xor => {
+                self.v[x as usize] ^= self.v[y as usize];
+                self.v[0xF] = 0;
+            }
             OpcodeALU::Add => {
                 let (res, overflow) = self.v[x as usize].overflowing_add(self.v[y as usize]);
                 self.v[x as usize] = res;
