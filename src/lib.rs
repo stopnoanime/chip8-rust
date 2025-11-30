@@ -313,6 +313,7 @@ impl Chip8 {
         let row_count = std::cmp::min(n as usize, DISPLAY_Y - y_pos);
         let col_count = std::cmp::min(8, DISPLAY_X - x_pos);
 
+        let mut any_erased = false;
         for row in 0..row_count {
             let sprite_byte = self.memory[self.i as usize + row];
 
@@ -324,13 +325,14 @@ impl Chip8 {
                     // Flip the pixel
                     *pixel ^= true;
 
-                    // If any pixel was erased, set VF to 1
                     if !*pixel {
-                        self.v[0xF] = 1;
+                        any_erased = true;
                     }
                 }
             }
         }
+
+        self.v[0xF] = if any_erased { 1 } else { 0 };
     }
 }
 
