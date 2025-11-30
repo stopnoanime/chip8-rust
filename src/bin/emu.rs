@@ -1,5 +1,5 @@
-use macroquad::audio::{PlaySoundParams, Sound, load_sound_from_bytes, play_sound, stop_sound};
 use macroquad::prelude::*;
+use rodio::{OutputStreamBuilder, Sink, Source, source::SquareWave};
 
 use chip8_rust::{
     CPU_TIME_STEP, Chip8, CycleResult, DISPLAY_X, DISPLAY_Y, Display, TIMER_TIME_STEP,
@@ -27,24 +27,6 @@ const KEY_MAP: [KeyCode; 16] = [
 fn update_keypad(chip8: &mut Chip8) {
     for (i, &key) in KEY_MAP.iter().enumerate() {
         chip8.keypad[i] = is_key_down(key);
-    }
-}
-
-fn handle_beep(should_beep: bool, is_beeping: &mut bool, beep_sound: &Sound) {
-    if should_beep {
-        if !*is_beeping {
-            play_sound(
-                beep_sound,
-                PlaySoundParams {
-                    looped: true,
-                    volume: 0.5,
-                },
-            );
-            *is_beeping = true;
-        }
-    } else if *is_beeping {
-        stop_sound(beep_sound);
-        *is_beeping = false;
     }
 }
 
@@ -88,9 +70,11 @@ async fn main() {
     let mut chip8 = Chip8::new();
     chip8.load_rom(&rom);
 
-    const BEEP_WAV: &[u8] = include_bytes!("../../assets/beep.wav");
-    let beep_sound = load_sound_from_bytes(BEEP_WAV).await.unwrap();
-    let mut is_beeping = false;
+    let audio_stream =
+        OutputStreamBuilder::open_default_stream().expect("Failed to open audio output stream");
+    let audio_sink = Sink::connect_new(audio_stream.mixer());
+    audio_sink.pause();
+    audio_sink.append(SquareWave::new(440.0).amplify(0.5));
 
     let mut cpu_dt_accumulator = 0.0;
     let mut timer_dt_accumulator = 0.0;
@@ -122,7 +106,12 @@ async fn main() {
             timer_dt_accumulator -= TIMER_TIME_STEP;
         }
 
-        handle_beep(chip8.should_beep(), &mut is_beeping, &beep_sound);
+        if chip8.should_beep() {
+            audio_sink.play();
+        } else {
+            audio_sink.pause();
+        }
+
         draw_display(&chip8.display);
         draw_fps();
 
