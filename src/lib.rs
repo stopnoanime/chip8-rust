@@ -10,6 +10,7 @@ pub const CPU_TIME_STEP: f32 = 1.0 / CPU_HZ as f32;
 pub const TIMER_TIME_STEP: f32 = 1.0 / TIMER_HZ as f32;
 
 pub type Display = [[bool; DISPLAY_X]; DISPLAY_Y];
+pub type IsKeyPressed = dyn Fn(u8) -> bool;
 
 const FONT_START_ADDRESS: usize = 0x50;
 const ROM_START_ADDRESS: usize = 0x200;
@@ -26,17 +27,12 @@ pub struct Chip8 {
     pub delay_timer: u8,
     pub sound_timer: u8,
 
-    pub keypad: [bool; 16],
-}
-
-impl Default for Chip8 {
-    fn default() -> Self {
-        Self::new()
-    }
+    pub wait_release_key: Option<u8>,
+    pub is_key_pressed: Box<IsKeyPressed>,
 }
 
 impl Chip8 {
-    pub fn new() -> Self {
+    pub fn new(is_key_pressed: Box<IsKeyPressed>) -> Self {
         Chip8 {
             memory: [0; 4096],
             display: [[false; DISPLAY_X]; DISPLAY_Y],
@@ -46,7 +42,8 @@ impl Chip8 {
             stack: Vec::new(),
             delay_timer: 0,
             sound_timer: 0,
-            keypad: [false; 16],
+            wait_release_key: None,
+            is_key_pressed,
         }
     }
 
@@ -136,7 +133,7 @@ impl Chip8 {
             (0xD, _, _, _) => Opcode::Draw { x, y, n },
             (0xE, _, 0x9, 0xE) => Opcode::SkipIfPressed { x },
             (0xE, _, 0xA, 0x1) => Opcode::SkipIfNotPressed { x },
-            (0xF, _, 0x0, 0xA) => Opcode::GetKey { x },
+            (0xF, _, 0x0, 0xA) => Opcode::WaitForKey { x },
             (0xF, _, 0x0, 0x7) => Opcode::ReadDelayTimer { x },
             (0xF, _, 0x1, 0x5) => Opcode::SetDelayTimer { x },
             (0xF, _, 0x1, 0x8) => Opcode::SetSoundTimer { x },
@@ -211,28 +208,20 @@ impl Chip8 {
             }
             Opcode::Draw { x, y, n } => {
                 self.execute_draw(x, y, n);
-                return CycleResult::Draw;
+                return CycleResult::NextFrame;
             }
             Opcode::SkipIfPressed { x } => {
-                if self.keypad[self.v[x as usize] as usize] {
+                if (self.is_key_pressed)(self.v[x as usize]) {
                     self.pc += 2;
                 }
             }
             Opcode::SkipIfNotPressed { x } => {
-                if !self.keypad[self.v[x as usize] as usize] {
+                if !(self.is_key_pressed)(self.v[x as usize]) {
                     self.pc += 2;
                 }
             }
-            Opcode::GetKey { x } => {
-                for (key, &pressed) in self.keypad.iter().enumerate() {
-                    if pressed {
-                        self.v[x as usize] = key as u8;
-                        return CycleResult::Continue;
-                    }
-                }
-
-                // If no key is pressed, loop on this instruction
-                self.pc -= 2;
+            Opcode::WaitForKey { x } => {
+                return self.execute_wait_for_key(x);
             }
             Opcode::ReadDelayTimer { x } => {
                 self.v[x as usize] = self.delay_timer;
@@ -348,6 +337,31 @@ impl Chip8 {
 
         self.v[0xF] = if any_erased { 1 } else { 0 };
     }
+
+    fn execute_wait_for_key(&mut self, x: u8) -> CycleResult {
+        if let Some(key) = self.wait_release_key
+            && !(self.is_key_pressed)(key)
+        {
+            // The key we were waiting for has been released
+            self.v[x as usize] = key;
+            self.wait_release_key = None;
+            return CycleResult::Continue;
+        }
+
+        if self.wait_release_key.is_none() {
+            // Not waiting for a key release yet, check all keys
+            for key in 0..16 {
+                if (self.is_key_pressed)(key) {
+                    self.wait_release_key = Some(key);
+                    break;
+                }
+            }
+        }
+
+        // Repeat this instruction until a key is released
+        self.pc -= 2;
+        CycleResult::NextFrame
+    }
 }
 
 pub enum Opcode {
@@ -375,7 +389,7 @@ pub enum Opcode {
 
     SkipIfPressed { x: u8 },
     SkipIfNotPressed { x: u8 },
-    GetKey { x: u8 },
+    WaitForKey { x: u8 },
 
     ReadDelayTimer { x: u8 },
     SetDelayTimer { x: u8 },
@@ -404,6 +418,6 @@ pub enum OpcodeALU {
 
 pub enum CycleResult {
     Continue,
-    Draw,
+    NextFrame,
     UnknownOpcode { addr: u16, opcode: u16 },
 }
