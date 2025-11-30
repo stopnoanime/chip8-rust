@@ -61,10 +61,10 @@ impl Chip8 {
     }
 
     // Should be about 700Hz
-    pub fn cpu_cycle(&mut self) {
+    pub fn cpu_cycle(&mut self) -> CycleResult {
         let opcode = self.fetch();
         let decoded_opcode = self.decode(opcode);
-        self.execute(decoded_opcode);
+        self.execute(decoded_opcode)
     }
 
     // Should be 60Hz
@@ -126,7 +126,7 @@ impl Chip8 {
                     0x6 => OpcodeALU::ShiftRight,
                     0x7 => OpcodeALU::SubReverse,
                     0xE => OpcodeALU::ShiftLeft,
-                    _ => OpcodeALU::Unknown,
+                    _ => return Opcode::Unknown(opcode),
                 },
             },
             (0x9, _, _, 0x0) => Opcode::SkipRegNotEqualReg { x, y },
@@ -146,11 +146,11 @@ impl Chip8 {
             (0xF, _, 0x5, 0x5) => Opcode::StoreRegs { x },
             (0xF, _, 0x6, 0x5) => Opcode::LoadRegs { x },
 
-            _ => Opcode::Unknown,
+            _ => Opcode::Unknown(opcode),
         }
     }
 
-    fn execute(&mut self, opcode: Opcode) {
+    fn execute(&mut self, opcode: Opcode) -> CycleResult {
         match opcode {
             Opcode::ClearDisplay => {
                 self.display = [[false; DISPLAY_X]; DISPLAY_Y];
@@ -211,6 +211,7 @@ impl Chip8 {
             }
             Opcode::Draw { x, y, n } => {
                 self.execute_draw(x, y, n);
+                return CycleResult::Draw;
             }
             Opcode::SkipIfPressed { x } => {
                 if self.keypad[self.v[x as usize] as usize] {
@@ -226,7 +227,7 @@ impl Chip8 {
                 for (key, &pressed) in self.keypad.iter().enumerate() {
                     if pressed {
                         self.v[x as usize] = key as u8;
-                        return;
+                        return CycleResult::Continue;
                     }
                 }
 
@@ -264,10 +265,15 @@ impl Chip8 {
                     self.i += 1;
                 }
             }
-            Opcode::Unknown => {
-                // Add debug print or sth here
+            Opcode::Unknown(opcode) => {
+                return CycleResult::UnknownOpcode {
+                    addr: self.pc - 2,
+                    opcode,
+                };
             }
-        }
+        };
+
+        CycleResult::Continue
     }
 
     fn execute_alu(&mut self, x: u8, y: u8, op: OpcodeALU) {
@@ -309,9 +315,6 @@ impl Chip8 {
                 let msb = (self.v[y as usize] >> 7) & 1;
                 self.v[x as usize] = self.v[y as usize] << 1;
                 self.v[0xF] = msb;
-            }
-            OpcodeALU::Unknown => {
-                // Add debug print or sth here
             }
         }
     }
@@ -384,7 +387,7 @@ pub enum Opcode {
     StoreRegs { x: u8 },
     LoadRegs { x: u8 },
 
-    Unknown,
+    Unknown(u16),
 }
 
 pub enum OpcodeALU {
@@ -397,5 +400,10 @@ pub enum OpcodeALU {
     ShiftRight,
     SubReverse,
     ShiftLeft,
-    Unknown,
+}
+
+pub enum CycleResult {
+    Continue,
+    Draw,
+    UnknownOpcode { addr: u16, opcode: u16 },
 }
