@@ -290,13 +290,13 @@ impl Chip8 {
                 self.v[0xF] = if borrow { 0 } else { 1 };
             }
             OpcodeALU::ShiftRight => {
-                let lsb = self.v[x as usize] & 1;
-                self.v[x as usize] >>= 1;
+                let lsb = self.v[y as usize] & 1;
+                self.v[x as usize] = self.v[y as usize] >> 1;
                 self.v[0xF] = lsb;
             }
             OpcodeALU::ShiftLeft => {
-                let msb = (self.v[x as usize] >> 7) & 1;
-                self.v[x as usize] <<= 1;
+                let msb = (self.v[y as usize] >> 7) & 1;
+                self.v[x as usize] = self.v[y as usize] << 1;
                 self.v[0xF] = msb;
             }
             OpcodeALU::Unknown => {
