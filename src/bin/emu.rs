@@ -1,7 +1,9 @@
 use macroquad::audio::{PlaySoundParams, Sound, load_sound_from_bytes, play_sound, stop_sound};
 use macroquad::prelude::*;
 
-use chip8_rust::{CPU_TIME_STEP, Chip8, DISPLAY_X, DISPLAY_Y, Display, TIMER_TIME_STEP};
+use chip8_rust::{
+    CPU_TIME_STEP, Chip8, CycleResult, DISPLAY_X, DISPLAY_Y, Display, TIMER_TIME_STEP,
+};
 
 const KEY_MAP: [KeyCode; 16] = [
     KeyCode::X,    // 0x00
@@ -101,8 +103,18 @@ async fn main() {
         update_keypad(&mut chip8);
 
         while cpu_dt_accumulator >= CPU_TIME_STEP {
-            chip8.cpu_cycle();
             cpu_dt_accumulator -= CPU_TIME_STEP;
+
+            match chip8.cpu_cycle() {
+                CycleResult::Draw => {
+                    // Limit to one draw per frame
+                    break;
+                }
+                CycleResult::UnknownOpcode { addr, opcode } => {
+                    println!("Unknown opcode at {:04X}: {:04X}", addr, opcode);
+                }
+                CycleResult::Continue => {}
+            }
         }
 
         while timer_dt_accumulator >= TIMER_TIME_STEP {
