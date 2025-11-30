@@ -254,12 +254,14 @@ impl Chip8 {
             }
             Opcode::StoreRegs { x } => {
                 for reg_index in 0..=x as usize {
-                    self.memory[self.i as usize + reg_index] = self.v[reg_index];
+                    self.memory[self.i as usize] = self.v[reg_index];
+                    self.i += 1;
                 }
             }
             Opcode::LoadRegs { x } => {
                 for reg_index in 0..=x as usize {
-                    self.v[reg_index] = self.memory[self.i as usize + reg_index];
+                    self.v[reg_index] = self.memory[self.i as usize];
+                    self.i += 1;
                 }
             }
             Opcode::Unknown => {
