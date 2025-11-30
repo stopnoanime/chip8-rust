@@ -24,7 +24,9 @@ const KEY_MAP: [KeyCode; 16] = [
     KeyCode::V,    // 0x0F
 ];
 
-fn draw_display(display: &Display) {
+const DECAY_RATE: f32 = 10.0;
+
+fn draw_display(display: &Display, intensity: &mut [[f32; DISPLAY_X]; DISPLAY_Y], dt: f32) {
     // Scale to fit the screen
     let scale_x = screen_width() / DISPLAY_X as f32;
     let scale_y = screen_height() / DISPLAY_Y as f32;
@@ -37,13 +39,20 @@ fn draw_display(display: &Display) {
     clear_background(BLACK);
     for (y, row) in display.iter().enumerate() {
         for (x, &pixel) in row.iter().enumerate() {
-            if pixel {
+            intensity[y][x] = if pixel {
+                1.0
+            } else {
+                (intensity[y][x] - DECAY_RATE * dt).max(0.0)
+            };
+
+            if intensity[y][x] > 0.0 {
+                let color = Color::new(0.0, 1.0, 0.0, intensity[y][x]);
                 draw_rectangle(
                     offset_x + (x as f32 * scale),
                     offset_y + (y as f32 * scale),
                     scale,
                     scale,
-                    WHITE,
+                    color,
                 );
             }
         }
@@ -75,6 +84,7 @@ async fn main() {
 
     let mut cpu_dt_accumulator = 0.0;
     let mut timer_dt_accumulator = 0.0;
+    let mut pixel_intensities = [[0.0; DISPLAY_X]; DISPLAY_Y];
 
     loop {
         if is_key_pressed(KeyCode::Escape) {
@@ -111,7 +121,7 @@ async fn main() {
             audio_sink.pause();
         }
 
-        draw_display(&chip8.display);
+        draw_display(&chip8.display, &mut pixel_intensities, dt);
         draw_fps();
 
         next_frame().await
