@@ -80,6 +80,10 @@ async fn main() {
     let mut timer_dt_accumulator = 0.0;
 
     loop {
+        if is_key_pressed(KeyCode::Escape) {
+            break;
+        }
+
         let dt = get_frame_time();
         cpu_dt_accumulator += dt;
         timer_dt_accumulator += dt;
