@@ -70,8 +70,10 @@ async fn main() {
     let mut chip8 = Chip8::new();
     chip8.load_rom(&rom);
 
-    let audio_stream =
+    let mut audio_stream =
         OutputStreamBuilder::open_default_stream().expect("Failed to open audio output stream");
+    audio_stream.log_on_drop(false);
+
     let audio_sink = Sink::connect_new(audio_stream.mixer());
     audio_sink.pause();
     audio_sink.append(SquareWave::new(440.0).amplify(0.5));
