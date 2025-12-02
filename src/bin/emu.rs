@@ -2,7 +2,7 @@ use macroquad::prelude::*;
 use rodio::{OutputStreamBuilder, Sink, Source, source::SquareWave};
 
 use chip8_rust::{
-    CPU_TIME_STEP, Chip8, CycleResult, DISPLAY_X, DISPLAY_Y, Display, TIMER_TIME_STEP,
+    CPU_TIME_STEP, Chip8, Chip8Result, DISPLAY_X, DISPLAY_Y, Display, TIMER_TIME_STEP,
 };
 
 const KEY_MAP: [KeyCode; 16] = [
@@ -72,7 +72,7 @@ async fn main() {
 
     let is_key_down_cb = |key: u8| is_key_down(KEY_MAP[key as usize]);
     let mut chip8 = Chip8::new(Box::new(is_key_down_cb));
-    chip8.load_rom(&rom);
+    chip8.load_rom(&rom).expect("Failed to load ROM");
 
     let mut audio_stream =
         OutputStreamBuilder::open_default_stream().expect("Failed to open audio output stream");
@@ -99,14 +99,15 @@ async fn main() {
             cpu_dt_accumulator -= CPU_TIME_STEP;
 
             match chip8.cpu_cycle() {
-                CycleResult::NextFrame => {
+                Ok(Chip8Result::NextFrame) => {
                     // Don't execute further cycles this frame
                     break;
                 }
-                CycleResult::UnknownOpcode { addr, opcode } => {
-                    println!("Unknown opcode at {:04X}: {:04X}", addr, opcode);
+                Ok(Chip8Result::Continue) => {}
+                Err(e) => {
+                    eprintln!("Error: {:?}", e);
+                    return;
                 }
-                CycleResult::Continue => {}
             }
         }
 

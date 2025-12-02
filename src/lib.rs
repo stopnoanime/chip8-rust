@@ -14,9 +14,10 @@ pub type IsKeyPressed = dyn Fn(u8) -> bool;
 
 const FONT_START_ADDRESS: usize = 0x50;
 const ROM_START_ADDRESS: usize = 0x200;
+const MEMORY_SIZE: usize = 4096;
 
 pub struct Chip8 {
-    pub memory: [u8; 4096],
+    pub memory: [u8; MEMORY_SIZE],
     pub display: Display,
 
     pub pc: u16,
@@ -34,7 +35,7 @@ pub struct Chip8 {
 impl Chip8 {
     pub fn new(is_key_pressed: Box<IsKeyPressed>) -> Self {
         Chip8 {
-            memory: [0; 4096],
+            memory: [0; MEMORY_SIZE],
             display: [[false; DISPLAY_X]; DISPLAY_Y],
             pc: ROM_START_ADDRESS as u16,
             i: 0,
@@ -47,43 +48,45 @@ impl Chip8 {
         }
     }
 
-    pub fn load_rom(&mut self, rom: &[u8]) {
+    pub fn load_rom(&mut self, rom: &[u8]) -> Result<(), Chip8Error> {
         let font_end = FONT_START_ADDRESS + font::FONT.len();
         self.memory[FONT_START_ADDRESS..font_end].copy_from_slice(&font::FONT);
 
         let rom_end = ROM_START_ADDRESS + rom.len();
-        self.memory[ROM_START_ADDRESS..rom_end].copy_from_slice(rom);
+        if rom_end > MEMORY_SIZE {
+            return Err(Chip8Error::RomLoadError {
+                size: rom.len(),
+                max_size: MEMORY_SIZE - ROM_START_ADDRESS,
+            });
+        }
 
+        self.memory[ROM_START_ADDRESS..rom_end].copy_from_slice(rom);
         self.pc = ROM_START_ADDRESS as u16;
+
+        Ok(())
     }
 
-    // Should be about 700Hz
-    pub fn cpu_cycle(&mut self) -> CycleResult {
-        let opcode = self.fetch();
+    pub fn cpu_cycle(&mut self) -> Result<Chip8Result, Chip8Error> {
+        let opcode = self.fetch()?;
         let decoded_opcode = self.decode(opcode);
         self.execute(decoded_opcode)
     }
 
-    // Should be 60Hz
     pub fn timers_cycle(&mut self) {
-        if self.delay_timer > 0 {
-            self.delay_timer -= 1;
-        }
-
-        if self.sound_timer > 0 {
-            self.sound_timer -= 1;
-        }
+        self.delay_timer = self.delay_timer.saturating_sub(1);
+        self.sound_timer = self.sound_timer.saturating_sub(1);
     }
 
     pub fn should_beep(&self) -> bool {
         self.sound_timer > 0
     }
 
-    fn fetch(&mut self) -> u16 {
-        let opcode_slice = &self.memory[self.pc as usize..(self.pc + 2) as usize];
+    fn fetch(&mut self) -> Result<u16, Chip8Error> {
         self.pc += 2;
+        let high = *self.mem_get(self.pc - 2)?;
+        let low = *self.mem_get(self.pc - 1)?;
 
-        u16::from_be_bytes(opcode_slice.try_into().unwrap())
+        Ok(u16::from_be_bytes([high, low]))
     }
 
     fn decode(&self, opcode: u16) -> Opcode {
@@ -147,7 +150,7 @@ impl Chip8 {
         }
     }
 
-    fn execute(&mut self, opcode: Opcode) -> CycleResult {
+    fn execute(&mut self, opcode: Opcode) -> Result<Chip8Result, Chip8Error> {
         match opcode {
             Opcode::ClearDisplay => {
                 self.display = [[false; DISPLAY_X]; DISPLAY_Y];
@@ -163,9 +166,10 @@ impl Chip8 {
                 self.pc = nnn;
             }
             Opcode::Return => {
-                if let Some(address) = self.stack.pop() {
-                    self.pc = address;
-                }
+                self.pc = self
+                    .stack
+                    .pop()
+                    .ok_or(Chip8Error::StackUnderflow { at: self.pc - 2 })?;
             }
             Opcode::SkipRegEqualImm { x, nn } => {
                 if self.v[x as usize] == nn {
@@ -207,8 +211,7 @@ impl Chip8 {
                 self.i = self.i.wrapping_add(self.v[x as usize] as u16);
             }
             Opcode::Draw { x, y, n } => {
-                self.execute_draw(x, y, n);
-                return CycleResult::NextFrame;
+                return self.execute_draw(x, y, n);
             }
             Opcode::SkipIfPressed { x } => {
                 if (self.is_key_pressed)(self.v[x as usize]) {
@@ -221,7 +224,7 @@ impl Chip8 {
                 }
             }
             Opcode::WaitForKey { x } => {
-                return self.execute_wait_for_key(x);
+                return Ok(self.execute_wait_for_key(x));
             }
             Opcode::ReadDelayTimer { x } => {
                 self.v[x as usize] = self.delay_timer;
@@ -238,31 +241,31 @@ impl Chip8 {
             }
             Opcode::BCD { x } => {
                 let value = self.v[x as usize];
-                self.memory[self.i as usize] = value / 100;
-                self.memory[self.i as usize + 1] = (value / 10) % 10;
-                self.memory[self.i as usize + 2] = value % 10;
+                *self.mem_get(self.i)? = value / 100;
+                *self.mem_get(self.i + 1)? = (value / 10) % 10;
+                *self.mem_get(self.i + 2)? = value % 10;
             }
             Opcode::StoreRegs { x } => {
                 for reg_index in 0..=x as usize {
-                    self.memory[self.i as usize] = self.v[reg_index];
+                    *self.mem_get(self.i)? = self.v[reg_index];
                     self.i += 1;
                 }
             }
             Opcode::LoadRegs { x } => {
                 for reg_index in 0..=x as usize {
-                    self.v[reg_index] = self.memory[self.i as usize];
+                    self.v[reg_index] = *self.mem_get(self.i)?;
                     self.i += 1;
                 }
             }
             Opcode::Unknown(opcode) => {
-                return CycleResult::UnknownOpcode {
-                    addr: self.pc - 2,
+                return Err(Chip8Error::UnknownOpcode {
+                    at: self.pc - 2,
                     opcode,
-                };
+                });
             }
         };
 
-        CycleResult::Continue
+        Ok(Chip8Result::Continue)
     }
 
     fn execute_alu(&mut self, x: u8, y: u8, op: OpcodeALU) {
@@ -308,7 +311,7 @@ impl Chip8 {
         }
     }
 
-    fn execute_draw(&mut self, x: u8, y: u8, n: u8) {
+    fn execute_draw(&mut self, x: u8, y: u8, n: u8) -> Result<Chip8Result, Chip8Error> {
         let x_pos = self.v[x as usize] as usize % DISPLAY_X;
         let y_pos = self.v[y as usize] as usize % DISPLAY_Y;
 
@@ -318,7 +321,7 @@ impl Chip8 {
 
         let mut any_erased = false;
         for row in 0..row_count {
-            let sprite_byte = self.memory[self.i as usize + row];
+            let sprite_byte = *self.mem_get(self.i + row as u16)?;
 
             for col in 0..col_count {
                 // If current sprite bit is non-zero
@@ -336,16 +339,17 @@ impl Chip8 {
         }
 
         self.v[0xF] = if any_erased { 1 } else { 0 };
+        Ok(Chip8Result::NextFrame)
     }
 
-    fn execute_wait_for_key(&mut self, x: u8) -> CycleResult {
+    fn execute_wait_for_key(&mut self, x: u8) -> Chip8Result {
         if let Some(key) = self.wait_release_key
             && !(self.is_key_pressed)(key)
         {
             // The key we were waiting for has been released
             self.v[x as usize] = key;
             self.wait_release_key = None;
-            return CycleResult::Continue;
+            return Chip8Result::Continue;
         }
 
         if self.wait_release_key.is_none() {
@@ -360,7 +364,16 @@ impl Chip8 {
 
         // Repeat this instruction until a key is released
         self.pc -= 2;
-        CycleResult::NextFrame
+        Chip8Result::NextFrame
+    }
+
+    fn mem_get(&mut self, addr: u16) -> Result<&mut u8, Chip8Error> {
+        self.memory
+            .get_mut(addr as usize)
+            .ok_or(Chip8Error::MemoryOutOfBounds {
+                at: self.pc - 2,
+                address: addr,
+            })
     }
 }
 
@@ -416,8 +429,15 @@ pub enum OpcodeALU {
     ShiftLeft,
 }
 
-pub enum CycleResult {
+pub enum Chip8Result {
     Continue,
     NextFrame,
-    UnknownOpcode { addr: u16, opcode: u16 },
+}
+
+#[derive(Debug)]
+pub enum Chip8Error {
+    RomLoadError { size: usize, max_size: usize },
+    MemoryOutOfBounds { at: u16, address: u16 },
+    StackUnderflow { at: u16 },
+    UnknownOpcode { at: u16, opcode: u16 },
 }
