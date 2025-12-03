@@ -1,13 +1,16 @@
 mod font;
+mod nibble;
+
+use nibble::u4;
 
 pub const DISPLAY_X: usize = 64;
 pub const DISPLAY_Y: usize = 32;
 
-pub const CPU_HZ: u16 = 700;
-pub const TIMER_HZ: u16 = 60;
+pub const CPU_HZ: f32 = 700.0;
+pub const TIMER_HZ: f32 = 60.0;
 
-pub const CPU_TIME_STEP: f32 = 1.0 / CPU_HZ as f32;
-pub const TIMER_TIME_STEP: f32 = 1.0 / TIMER_HZ as f32;
+pub const CPU_TIME_STEP: f32 = 1.0 / CPU_HZ;
+pub const TIMER_TIME_STEP: f32 = 1.0 / TIMER_HZ;
 
 pub type Display = [[bool; DISPLAY_X]; DISPLAY_Y];
 pub type IsKeyPressed = dyn Fn(u8) -> bool;
@@ -81,15 +84,14 @@ impl Chip8 {
         self.sound_timer > 0
     }
 
-    fn fetch(&mut self) -> Result<u16, Chip8Error> {
-        self.pc += 2;
-        let high = *self.mem_get(self.pc - 2)?;
-        let low = *self.mem_get(self.pc - 1)?;
+    pub fn fetch(&mut self) -> Result<u16, Chip8Error> {
+        let high = *self.mem_get(self.pc)?;
+        let low = *self.mem_get(self.pc.wrapping_add(1))?;
 
         Ok(u16::from_be_bytes([high, low]))
     }
 
-    fn decode(&self, opcode: u16) -> Opcode {
+    pub fn decode(&self, opcode: u16) -> Opcode {
         let nibble = (
             ((opcode & 0xF000) >> 12) as u8,
             ((opcode & 0x0F00) >> 8) as u8,
@@ -97,9 +99,9 @@ impl Chip8 {
             (opcode & 0x000F) as u8,
         );
 
-        let x = nibble.1;
-        let y = nibble.2;
-        let n = nibble.3;
+        let x = u4::new(nibble.1);
+        let y = u4::new(nibble.2);
+        let n = u4::new(nibble.3);
         let nn = (opcode & 0x00FF) as u8;
         let nnn = opcode & 0x0FFF;
 
@@ -116,7 +118,7 @@ impl Chip8 {
             (0x8, _, _, _) => Opcode::ALU {
                 x,
                 y,
-                op: match n {
+                op: match nibble.3 {
                     0x0 => OpcodeALU::Set,
                     0x1 => OpcodeALU::Or,
                     0x2 => OpcodeALU::And,
@@ -150,7 +152,9 @@ impl Chip8 {
         }
     }
 
-    fn execute(&mut self, opcode: Opcode) -> Result<Chip8Result, Chip8Error> {
+    pub fn execute(&mut self, opcode: Opcode) -> Result<Chip8Result, Chip8Error> {
+        self.pc = self.pc.wrapping_add(2);
+
         match opcode {
             Opcode::ClearDisplay => {
                 self.display = [[false; DISPLAY_X]; DISPLAY_Y];
@@ -159,169 +163,163 @@ impl Chip8 {
                 self.pc = nnn;
             }
             Opcode::JumpWithOffset { nnn } => {
-                self.pc = nnn + self.v[0] as u16;
+                self.pc = nnn.wrapping_add(self.v[0].into());
             }
             Opcode::Call { nnn } => {
                 self.stack.push(self.pc);
                 self.pc = nnn;
             }
             Opcode::Return => {
-                self.pc = self
-                    .stack
-                    .pop()
-                    .ok_or(Chip8Error::StackUnderflow { at: self.pc - 2 })?;
+                self.pc = self.stack.pop().ok_or(Chip8Error::StackUnderflow)?;
             }
             Opcode::SkipRegEqualImm { x, nn } => {
-                if self.v[x as usize] == nn {
-                    self.pc += 2;
+                if self.v[x] == nn {
+                    self.pc = self.pc.wrapping_add(2);
                 }
             }
             Opcode::SkipRegNotEqualImm { x, nn } => {
-                if self.v[x as usize] != nn {
-                    self.pc += 2;
+                if self.v[x] != nn {
+                    self.pc = self.pc.wrapping_add(2);
                 }
             }
             Opcode::SkipRegEqualReg { x, y } => {
-                if self.v[x as usize] == self.v[y as usize] {
-                    self.pc += 2;
+                if self.v[x] == self.v[y] {
+                    self.pc = self.pc.wrapping_add(2);
                 }
             }
             Opcode::SkipRegNotEqualReg { x, y } => {
-                if self.v[x as usize] != self.v[y as usize] {
-                    self.pc += 2;
+                if self.v[x] != self.v[y] {
+                    self.pc = self.pc.wrapping_add(2);
                 }
             }
             Opcode::SetRegImm { x, nn } => {
-                self.v[x as usize] = nn;
+                self.v[x] = nn;
             }
             Opcode::AddRegImm { x, nn } => {
-                self.v[x as usize] = self.v[x as usize].wrapping_add(nn);
+                self.v[x] = self.v[x].wrapping_add(nn);
             }
             Opcode::ALU { x, y, op } => {
                 self.execute_alu(x, y, op);
             }
             Opcode::Random { x, nn } => {
                 let rand_byte: u8 = rand::random();
-                self.v[x as usize] = rand_byte & nn;
+                self.v[x] = rand_byte & nn;
             }
             Opcode::SetIndexImm { nnn } => {
                 self.i = nnn;
             }
             Opcode::AddIndexReg { x } => {
-                self.i = self.i.wrapping_add(self.v[x as usize] as u16);
+                self.i = self.i.wrapping_add(self.v[x].into());
             }
             Opcode::Draw { x, y, n } => {
                 return self.execute_draw(x, y, n);
             }
             Opcode::SkipIfPressed { x } => {
-                if (self.is_key_pressed)(self.v[x as usize]) {
-                    self.pc += 2;
+                if (self.is_key_pressed)(self.v[x]) {
+                    self.pc = self.pc.wrapping_add(2);
                 }
             }
             Opcode::SkipIfNotPressed { x } => {
-                if !(self.is_key_pressed)(self.v[x as usize]) {
-                    self.pc += 2;
+                if !(self.is_key_pressed)(self.v[x]) {
+                    self.pc = self.pc.wrapping_add(2);
                 }
             }
             Opcode::WaitForKey { x } => {
                 return Ok(self.execute_wait_for_key(x));
             }
             Opcode::ReadDelayTimer { x } => {
-                self.v[x as usize] = self.delay_timer;
+                self.v[x] = self.delay_timer;
             }
             Opcode::SetDelayTimer { x } => {
-                self.delay_timer = self.v[x as usize];
+                self.delay_timer = self.v[x];
             }
             Opcode::SetSoundTimer { x } => {
-                self.sound_timer = self.v[x as usize];
+                self.sound_timer = self.v[x];
             }
             Opcode::FontChar { x } => {
-                let digit = self.v[x as usize] & 0x0F;
+                let digit = self.v[x] & 0x0F;
                 self.i = FONT_START_ADDRESS as u16 + digit as u16 * 5;
             }
             Opcode::BCD { x } => {
-                let value = self.v[x as usize];
+                let value = self.v[x];
                 *self.mem_get(self.i)? = value / 100;
-                *self.mem_get(self.i + 1)? = (value / 10) % 10;
-                *self.mem_get(self.i + 2)? = value % 10;
+                *self.mem_get(self.i.wrapping_add(1))? = (value / 10) % 10;
+                *self.mem_get(self.i.wrapping_add(2))? = value % 10;
             }
             Opcode::StoreRegs { x } => {
-                for reg_index in 0..=x as usize {
+                for reg_index in 0..=usize::from(x) {
                     *self.mem_get(self.i)? = self.v[reg_index];
-                    self.i += 1;
+                    self.i = self.i.wrapping_add(1);
                 }
             }
             Opcode::LoadRegs { x } => {
-                for reg_index in 0..=x as usize {
+                for reg_index in 0..=usize::from(x) {
                     self.v[reg_index] = *self.mem_get(self.i)?;
-                    self.i += 1;
+                    self.i = self.i.wrapping_add(1);
                 }
             }
             Opcode::Unknown(opcode) => {
-                return Err(Chip8Error::UnknownOpcode {
-                    at: self.pc - 2,
-                    opcode,
-                });
+                return Err(Chip8Error::UnknownOpcode { opcode });
             }
         };
 
         Ok(Chip8Result::Continue)
     }
 
-    fn execute_alu(&mut self, x: u8, y: u8, op: OpcodeALU) {
+    fn execute_alu(&mut self, x: u4, y: u4, op: OpcodeALU) {
         match op {
-            OpcodeALU::Set => self.v[x as usize] = self.v[y as usize],
+            OpcodeALU::Set => self.v[x] = self.v[y],
             OpcodeALU::Or => {
-                self.v[x as usize] |= self.v[y as usize];
+                self.v[x] |= self.v[y];
                 self.v[0xF] = 0;
             }
             OpcodeALU::And => {
-                self.v[x as usize] &= self.v[y as usize];
+                self.v[x] &= self.v[y];
                 self.v[0xF] = 0;
             }
             OpcodeALU::Xor => {
-                self.v[x as usize] ^= self.v[y as usize];
+                self.v[x] ^= self.v[y];
                 self.v[0xF] = 0;
             }
             OpcodeALU::Add => {
-                let (res, overflow) = self.v[x as usize].overflowing_add(self.v[y as usize]);
-                self.v[x as usize] = res;
+                let (res, overflow) = self.v[x].overflowing_add(self.v[y]);
+                self.v[x] = res;
                 self.v[0xF] = if overflow { 1 } else { 0 };
             }
             OpcodeALU::Sub => {
-                let (res, borrow) = self.v[x as usize].overflowing_sub(self.v[y as usize]);
-                self.v[x as usize] = res;
+                let (res, borrow) = self.v[x].overflowing_sub(self.v[y]);
+                self.v[x] = res;
                 self.v[0xF] = if borrow { 0 } else { 1 }; // Notice that borrow is inverted
             }
             OpcodeALU::SubReverse => {
-                let (res, borrow) = self.v[y as usize].overflowing_sub(self.v[x as usize]);
-                self.v[x as usize] = res;
+                let (res, borrow) = self.v[y].overflowing_sub(self.v[x]);
+                self.v[x] = res;
                 self.v[0xF] = if borrow { 0 } else { 1 };
             }
             OpcodeALU::ShiftRight => {
-                let lsb = self.v[y as usize] & 1;
-                self.v[x as usize] = self.v[y as usize] >> 1;
+                let lsb = self.v[y] & 1;
+                self.v[x] = self.v[y] >> 1;
                 self.v[0xF] = lsb;
             }
             OpcodeALU::ShiftLeft => {
-                let msb = (self.v[y as usize] >> 7) & 1;
-                self.v[x as usize] = self.v[y as usize] << 1;
+                let msb = (self.v[y] >> 7) & 1;
+                self.v[x] = self.v[y] << 1;
                 self.v[0xF] = msb;
             }
         }
     }
 
-    fn execute_draw(&mut self, x: u8, y: u8, n: u8) -> Result<Chip8Result, Chip8Error> {
-        let x_pos = self.v[x as usize] as usize % DISPLAY_X;
-        let y_pos = self.v[y as usize] as usize % DISPLAY_Y;
+    fn execute_draw(&mut self, x: u4, y: u4, n: u4) -> Result<Chip8Result, Chip8Error> {
+        let x_pos = self.v[x] as usize % DISPLAY_X;
+        let y_pos = self.v[y] as usize % DISPLAY_Y;
 
         // Don't draw out of bounds
-        let row_count = std::cmp::min(n as usize, DISPLAY_Y - y_pos);
+        let row_count = std::cmp::min(usize::from(n), DISPLAY_Y - y_pos);
         let col_count = std::cmp::min(8, DISPLAY_X - x_pos);
 
         let mut any_erased = false;
         for row in 0..row_count {
-            let sprite_byte = *self.mem_get(self.i + row as u16)?;
+            let sprite_byte = *self.mem_get(self.i.wrapping_add(row as u16))?;
 
             for col in 0..col_count {
                 // If current sprite bit is non-zero
@@ -342,12 +340,12 @@ impl Chip8 {
         Ok(Chip8Result::NextFrame)
     }
 
-    fn execute_wait_for_key(&mut self, x: u8) -> Chip8Result {
+    fn execute_wait_for_key(&mut self, x: u4) -> Chip8Result {
         if let Some(key) = self.wait_release_key
             && !(self.is_key_pressed)(key)
         {
             // The key we were waiting for has been released
-            self.v[x as usize] = key;
+            self.v[x] = key;
             self.wait_release_key = None;
             return Chip8Result::Continue;
         }
@@ -363,17 +361,14 @@ impl Chip8 {
         }
 
         // Repeat this instruction until a key is released
-        self.pc -= 2;
+        self.pc = self.pc.wrapping_sub(2);
         Chip8Result::NextFrame
     }
 
     fn mem_get(&mut self, addr: u16) -> Result<&mut u8, Chip8Error> {
         self.memory
             .get_mut(addr as usize)
-            .ok_or(Chip8Error::MemoryOutOfBounds {
-                at: self.pc - 2,
-                address: addr,
-            })
+            .ok_or(Chip8Error::MemoryOutOfBounds { address: addr })
     }
 }
 
@@ -384,35 +379,35 @@ pub enum Opcode {
     Call { nnn: u16 },
     Return,
 
-    SkipRegEqualImm { x: u8, nn: u8 },
-    SkipRegNotEqualImm { x: u8, nn: u8 },
-    SkipRegEqualReg { x: u8, y: u8 },
-    SkipRegNotEqualReg { x: u8, y: u8 },
+    SkipRegEqualImm { x: u4, nn: u8 },
+    SkipRegNotEqualImm { x: u4, nn: u8 },
+    SkipRegEqualReg { x: u4, y: u4 },
+    SkipRegNotEqualReg { x: u4, y: u4 },
 
-    SetRegImm { x: u8, nn: u8 },
-    AddRegImm { x: u8, nn: u8 },
+    SetRegImm { x: u4, nn: u8 },
+    AddRegImm { x: u4, nn: u8 },
     SetIndexImm { nnn: u16 },
-    AddIndexReg { x: u8 },
+    AddIndexReg { x: u4 },
 
-    ALU { x: u8, y: u8, op: OpcodeALU },
-    Random { x: u8, nn: u8 },
+    ALU { x: u4, y: u4, op: OpcodeALU },
+    Random { x: u4, nn: u8 },
 
     ClearDisplay,
-    Draw { x: u8, y: u8, n: u8 },
+    Draw { x: u4, y: u4, n: u4 },
 
-    SkipIfPressed { x: u8 },
-    SkipIfNotPressed { x: u8 },
-    WaitForKey { x: u8 },
+    SkipIfPressed { x: u4 },
+    SkipIfNotPressed { x: u4 },
+    WaitForKey { x: u4 },
 
-    ReadDelayTimer { x: u8 },
-    SetDelayTimer { x: u8 },
-    SetSoundTimer { x: u8 },
+    ReadDelayTimer { x: u4 },
+    SetDelayTimer { x: u4 },
+    SetSoundTimer { x: u4 },
 
-    FontChar { x: u8 },
-    BCD { x: u8 },
+    FontChar { x: u4 },
+    BCD { x: u4 },
 
-    StoreRegs { x: u8 },
-    LoadRegs { x: u8 },
+    StoreRegs { x: u4 },
+    LoadRegs { x: u4 },
 
     Unknown(u16),
 }
@@ -437,7 +432,7 @@ pub enum Chip8Result {
 #[derive(Debug)]
 pub enum Chip8Error {
     RomLoadError { size: usize, max_size: usize },
-    MemoryOutOfBounds { at: u16, address: u16 },
-    StackUnderflow { at: u16 },
-    UnknownOpcode { at: u16, opcode: u16 },
+    MemoryOutOfBounds { address: u16 },
+    StackUnderflow,
+    UnknownOpcode { opcode: u16 },
 }
