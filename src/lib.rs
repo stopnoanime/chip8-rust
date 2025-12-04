@@ -12,8 +12,7 @@ pub const TIMER_HZ: f32 = 60.0;
 pub const CPU_TIME_STEP: f32 = 1.0 / CPU_HZ;
 pub const TIMER_TIME_STEP: f32 = 1.0 / TIMER_HZ;
 
-pub type Display = [[bool; DISPLAY_X]; DISPLAY_Y];
-pub type IsKeyPressed = dyn Fn(u8) -> bool;
+pub type Display<T> = [[T; DISPLAY_X]; DISPLAY_Y];
 
 const FONT_START_ADDRESS: usize = 0x50;
 const ROM_START_ADDRESS: usize = 0x200;
@@ -21,7 +20,7 @@ const MEMORY_SIZE: usize = 4096;
 
 pub struct Chip8 {
     pub memory: [u8; MEMORY_SIZE],
-    pub display: Display,
+    pub display: Display<bool>,
 
     pub pc: u16,
     pub i: u16,
@@ -32,11 +31,11 @@ pub struct Chip8 {
     pub sound_timer: u8,
 
     pub wait_release_key: Option<u8>,
-    pub is_key_pressed: Box<IsKeyPressed>,
+    pub keypad: [bool; 16],
 }
 
 impl Chip8 {
-    pub fn new(is_key_pressed: Box<IsKeyPressed>) -> Self {
+    pub fn new() -> Self {
         Chip8 {
             memory: [0; MEMORY_SIZE],
             display: [[false; DISPLAY_X]; DISPLAY_Y],
@@ -47,7 +46,7 @@ impl Chip8 {
             delay_timer: 0,
             sound_timer: 0,
             wait_release_key: None,
-            is_key_pressed,
+            keypad: [false; 16],
         }
     }
 
@@ -215,12 +214,12 @@ impl Chip8 {
                 return self.execute_draw(x, y, n);
             }
             Opcode::SkipIfPressed { x } => {
-                if (self.is_key_pressed)(self.v[x]) {
+                if self.keypad[self.v[x] as usize & 0x0F] {
                     self.pc = self.pc.wrapping_add(2);
                 }
             }
             Opcode::SkipIfNotPressed { x } => {
-                if !(self.is_key_pressed)(self.v[x]) {
+                if !self.keypad[self.v[x] as usize & 0x0F] {
                     self.pc = self.pc.wrapping_add(2);
                 }
             }
@@ -342,7 +341,7 @@ impl Chip8 {
 
     fn execute_wait_for_key(&mut self, x: u4) -> Chip8Result {
         if let Some(key) = self.wait_release_key
-            && !(self.is_key_pressed)(key)
+            && !self.keypad[key as usize]
         {
             // The key we were waiting for has been released
             self.v[x] = key;
@@ -353,7 +352,7 @@ impl Chip8 {
         if self.wait_release_key.is_none() {
             // Not waiting for a key release yet, check all keys
             for key in 0..16 {
-                if (self.is_key_pressed)(key) {
+                if self.keypad[key as usize] {
                     self.wait_release_key = Some(key);
                     break;
                 }
@@ -369,6 +368,12 @@ impl Chip8 {
         self.memory
             .get_mut(addr as usize)
             .ok_or(Chip8Error::MemoryOutOfBounds { address: addr })
+    }
+}
+
+impl Default for Chip8 {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
