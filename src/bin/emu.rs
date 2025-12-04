@@ -1,66 +1,241 @@
-use macroquad::prelude::*;
-use rodio::{OutputStreamBuilder, Sink, Source, source::SquareWave};
+use std::{sync::Arc, time::Instant};
 
-use chip8_rust::{
-    CPU_TIME_STEP, Chip8, Chip8Result, DISPLAY_X, DISPLAY_Y, Display, TIMER_TIME_STEP,
+use pixels::{Pixels, SurfaceTexture};
+use rodio::{OutputStream, OutputStreamBuilder, Sink, Source, source::SquareWave};
+use winit::{
+    application::ApplicationHandler,
+    dpi::LogicalSize,
+    event::{ElementState, KeyEvent, WindowEvent},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    keyboard::{Key, KeyCode, NamedKey},
+    window::{Window, WindowId},
 };
 
+use chip8_rust::{
+    CPU_TIME_STEP, Chip8, Chip8Error, Chip8Result, DISPLAY_X, DISPLAY_Y, Display, TIMER_TIME_STEP,
+};
+
+const DISPLAY_PHOSPHOR_RATE: f32 = 10.0;
 const KEY_MAP: [KeyCode; 16] = [
-    KeyCode::X,    // 0x00
-    KeyCode::Key1, // 0x01
-    KeyCode::Key2, // 0x02
-    KeyCode::Key3, // 0x03
-    KeyCode::Q,    // 0x04
-    KeyCode::W,    // 0x05
-    KeyCode::E,    // 0x06
-    KeyCode::A,    // 0x07
-    KeyCode::S,    // 0x08
-    KeyCode::D,    // 0x09
-    KeyCode::Z,    // 0x0A
-    KeyCode::C,    // 0x0B
-    KeyCode::Key4, // 0x0C
-    KeyCode::R,    // 0x0D
-    KeyCode::F,    // 0x0E
-    KeyCode::V,    // 0x0F
+    KeyCode::KeyX,   // 0x00
+    KeyCode::Digit1, // 0x01
+    KeyCode::Digit2, // 0x02
+    KeyCode::Digit3, // 0x03
+    KeyCode::KeyQ,   // 0x04
+    KeyCode::KeyW,   // 0x05
+    KeyCode::KeyE,   // 0x06
+    KeyCode::KeyA,   // 0x07
+    KeyCode::KeyS,   // 0x08
+    KeyCode::KeyD,   // 0x09
+    KeyCode::KeyZ,   // 0x0A
+    KeyCode::KeyC,   // 0x0B
+    KeyCode::Digit4, // 0x0C
+    KeyCode::KeyR,   // 0x0D
+    KeyCode::KeyF,   // 0x0E
+    KeyCode::KeyV,   // 0x0F
 ];
 
-const DECAY_RATE: f32 = 10.0;
+struct App {
+    pixels: Option<Pixels<'static>>,
+    window: Option<Arc<Window>>,
+    display_float: Display<f32>,
 
-fn draw_display(display: &Display, intensity: &mut [[f32; DISPLAY_X]; DISPLAY_Y], dt: f32) {
-    // Scale to fit the screen
-    let scale_x = screen_width() / DISPLAY_X as f32;
-    let scale_y = screen_height() / DISPLAY_Y as f32;
-    let scale = scale_x.min(scale_y).floor().max(1.0);
+    _audio_stream: OutputStream,
+    audio_sink: Sink,
 
-    // Offset to center the display
-    let offset_x = ((screen_width() - (DISPLAY_X as f32 * scale)) / 2.0).round();
-    let offset_y = ((screen_height() - (DISPLAY_Y as f32 * scale)) / 2.0).round();
+    chip8: Chip8,
+    last_frame_instant: Instant,
+    cpu_dt_accumulator: f32,
+    timer_dt_accumulator: f32,
+}
 
-    clear_background(BLACK);
-    for (y, row) in display.iter().enumerate() {
-        for (x, &pixel) in row.iter().enumerate() {
-            intensity[y][x] = if pixel {
+impl App {
+    fn new(rom: &[u8]) -> Self {
+        let mut _audio_stream =
+            OutputStreamBuilder::open_default_stream().expect("Failed to open audio output stream");
+        _audio_stream.log_on_drop(false);
+
+        let audio_sink = Sink::connect_new(_audio_stream.mixer());
+        audio_sink.pause();
+        audio_sink.append(SquareWave::new(440.0).amplify(0.5));
+
+        let mut chip8 = Chip8::default();
+        chip8.load_rom(rom).expect("Failed to load ROM");
+
+        Self {
+            pixels: None,
+            window: None,
+            display_float: [[0.0; DISPLAY_X]; DISPLAY_Y],
+
+            _audio_stream,
+            audio_sink,
+
+            chip8,
+            last_frame_instant: Instant::now(),
+            cpu_dt_accumulator: 0.0,
+            timer_dt_accumulator: 0.0,
+        }
+    }
+
+    fn process_cpu(&mut self, dt: f32) -> Result<(), Chip8Error> {
+        self.cpu_dt_accumulator += dt;
+        self.timer_dt_accumulator += dt;
+
+        while self.cpu_dt_accumulator >= CPU_TIME_STEP {
+            self.cpu_dt_accumulator -= CPU_TIME_STEP;
+            match self.chip8.cpu_cycle() {
+                Ok(Chip8Result::NextFrame) => {
+                    // Don't execute further cycles this frame
+                    break;
+                }
+                Ok(Chip8Result::Continue) => {}
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+
+        while self.timer_dt_accumulator >= TIMER_TIME_STEP {
+            self.chip8.timers_cycle();
+            self.timer_dt_accumulator -= TIMER_TIME_STEP;
+        }
+
+        if self.chip8.should_beep() {
+            self.audio_sink.play();
+        } else {
+            self.audio_sink.pause();
+        }
+
+        Ok(())
+    }
+
+    fn process_display(&mut self, dt: f32) {
+        let buff = self.pixels.as_mut().unwrap().frame_mut();
+
+        for (i, pxl) in buff.chunks_exact_mut(4).enumerate() {
+            let x = i % DISPLAY_X;
+            let y = i / DISPLAY_X;
+
+            self.display_float[y][x] = if self.chip8.display[y][x] {
                 1.0
             } else {
-                (intensity[y][x] - DECAY_RATE * dt).max(0.0)
+                (self.display_float[y][x] - DISPLAY_PHOSPHOR_RATE * dt).max(0.0)
             };
 
-            if intensity[y][x] > 0.0 {
-                let color = Color::new(0.0, 1.0, 0.0, intensity[y][x]);
-                draw_rectangle(
-                    offset_x + (x as f32 * scale),
-                    offset_y + (y as f32 * scale),
-                    scale,
-                    scale,
-                    color,
-                );
-            }
+            let rgba = [0, 0xff, 0, (self.display_float[y][x] * 255.0) as u8];
+            pxl.copy_from_slice(&rgba);
         }
     }
 }
 
-#[macroquad::main("64x32 Display")]
-async fn main() {
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window = {
+            let size = LogicalSize::new(DISPLAY_X as u32 * 10, DISPLAY_Y as u32 * 10);
+            let min_size = LogicalSize::new(DISPLAY_X as u32, DISPLAY_Y as u32);
+
+            Arc::new(
+                event_loop
+                    .create_window(
+                        Window::default_attributes()
+                            .with_title("chip8-rust")
+                            .with_inner_size(size)
+                            .with_min_inner_size(min_size),
+                    )
+                    .unwrap(),
+            )
+        };
+
+        self.window = Some(window.clone());
+        self.pixels = {
+            let window_size = window.inner_size();
+            let surface_texture =
+                SurfaceTexture::new(window_size.width, window_size.height, window.clone());
+
+            match Pixels::new(DISPLAY_X as u32, DISPLAY_Y as u32, surface_texture) {
+                Ok(pixels) => {
+                    window.request_redraw();
+                    Some(pixels)
+                }
+                Err(err) => {
+                    eprintln!("Error creating pixels surface: {}", err);
+                    event_loop.exit();
+                    None
+                }
+            }
+        };
+
+        // Avoid large dt on first frame
+        self.last_frame_instant = Instant::now();
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested
+            | WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        logical_key: Key::Named(NamedKey::Escape),
+                        ..
+                    },
+                ..
+            } => {
+                event_loop.exit();
+            }
+
+            WindowEvent::Resized(size) => {
+                if let Err(err) = self
+                    .pixels
+                    .as_mut()
+                    .unwrap()
+                    .resize_surface(size.width, size.height)
+                {
+                    eprintln!("Error resizing pixels surface: {}", err);
+                    event_loop.exit();
+                }
+            }
+
+            WindowEvent::RedrawRequested => {
+                let now = Instant::now();
+                let dt = (now - self.last_frame_instant).as_secs_f32();
+                self.last_frame_instant = now;
+
+                if let Err(e) = self.process_cpu(dt) {
+                    eprintln!("Chip8 Error: {:?}", e);
+                    event_loop.exit();
+                    return;
+                }
+
+                self.process_display(dt);
+
+                if let Err(e) = self.pixels.as_ref().unwrap().render() {
+                    eprintln!("Pixels render error: {}", e);
+                    event_loop.exit();
+                    return;
+                }
+
+                self.window.as_ref().unwrap().request_redraw();
+            }
+
+            WindowEvent::KeyboardInput { event, .. } => match event.state {
+                ElementState::Pressed => {
+                    if let Some(key) = KEY_MAP.iter().position(|&k| k == event.physical_key) {
+                        self.chip8.keypad[key] = true;
+                    }
+                }
+                ElementState::Released => {
+                    if let Some(key) = KEY_MAP.iter().position(|&k| k == event.physical_key) {
+                        self.chip8.keypad[key] = false;
+                    }
+                }
+            },
+
+            _ => (),
+        }
+    }
+}
+
+fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() != 2 {
@@ -70,61 +245,9 @@ async fn main() {
 
     let rom = std::fs::read(&args[1]).expect("Failed to read ROM file");
 
-    let is_key_down_cb = |key: u8| is_key_down(KEY_MAP[key as usize]);
-    let mut chip8 = Chip8::new(Box::new(is_key_down_cb));
-    chip8.load_rom(&rom).expect("Failed to load ROM");
+    let event_loop = EventLoop::new().unwrap();
+    event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut audio_stream =
-        OutputStreamBuilder::open_default_stream().expect("Failed to open audio output stream");
-    audio_stream.log_on_drop(false);
-
-    let audio_sink = Sink::connect_new(audio_stream.mixer());
-    audio_sink.pause();
-    audio_sink.append(SquareWave::new(440.0).amplify(0.5));
-
-    let mut cpu_dt_accumulator = 0.0;
-    let mut timer_dt_accumulator = 0.0;
-    let mut pixel_intensities = [[0.0; DISPLAY_X]; DISPLAY_Y];
-
-    loop {
-        if is_key_pressed(KeyCode::Escape) {
-            break;
-        }
-
-        let dt = get_frame_time();
-        cpu_dt_accumulator += dt;
-        timer_dt_accumulator += dt;
-
-        while cpu_dt_accumulator >= CPU_TIME_STEP {
-            cpu_dt_accumulator -= CPU_TIME_STEP;
-
-            match chip8.cpu_cycle() {
-                Ok(Chip8Result::NextFrame) => {
-                    // Don't execute further cycles this frame
-                    break;
-                }
-                Ok(Chip8Result::Continue) => {}
-                Err(e) => {
-                    eprintln!("Error: {:?}", e);
-                    return;
-                }
-            }
-        }
-
-        while timer_dt_accumulator >= TIMER_TIME_STEP {
-            chip8.timers_cycle();
-            timer_dt_accumulator -= TIMER_TIME_STEP;
-        }
-
-        if chip8.should_beep() {
-            audio_sink.play();
-        } else {
-            audio_sink.pause();
-        }
-
-        draw_display(&chip8.display, &mut pixel_intensities, dt);
-        draw_fps();
-
-        next_frame().await
-    }
+    let mut app = App::new(&rom);
+    event_loop.run_app(&mut app).expect("Error running app");
 }
