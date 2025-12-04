@@ -238,8 +238,14 @@ impl ApplicationHandler for App {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    if args.len() != 2 {
-        eprintln!("Usage: {} <rom_path>", args[0]);
+    if args.len() != 2 || args[1] == "-h" {
+        println!(
+            "Usage:\n\t{} <rom_path>\n\n\
+            Description:\n\tThis is a CHIP-8 emulator written in Rust.\n\n\
+            Keybindings:\n\t1-4, Q-R, A-F, Z-V: Map to CHIP-8 keys\n\t\
+            Escape: Exit the emulator\n",
+            args[0]
+        );
         std::process::exit(1);
     }
 
