@@ -1,6 +1,7 @@
 mod font;
 mod nibble;
 
+use font::{FONT, FONT_END_ADDRESS, FONT_START_ADDRESS};
 pub use nibble::u4;
 
 pub const DISPLAY_X: usize = 64;
@@ -15,7 +16,6 @@ pub const TIMER_TIME_STEP: f32 = 1.0 / TIMER_HZ;
 pub type Display<T> = [[T; DISPLAY_X]; DISPLAY_Y];
 
 // The constants are specified by the CHIP-8 specification
-const FONT_START_ADDRESS: usize = 0x50;
 const ROM_START_ADDRESS: usize = 0x200;
 const MEMORY_SIZE: usize = 4096;
 
@@ -62,19 +62,18 @@ impl Chip8 {
         }
     }
 
-    pub fn load_rom(&mut self, rom: &[u8]) -> Result<(), Chip8Error> {
-        let font_end = FONT_START_ADDRESS + font::FONT.len();
-        self.memory[FONT_START_ADDRESS..font_end].copy_from_slice(&font::FONT);
+    pub fn load(&mut self, rom: &[u8]) -> Result<(), Chip8Error> {
+        self.memory[FONT_START_ADDRESS..FONT_END_ADDRESS].copy_from_slice(&FONT);
 
         let rom_end = ROM_START_ADDRESS + rom.len();
-        if rom_end > MEMORY_SIZE {
-            return Err(Chip8Error::RomLoadError {
+        self.memory
+            .get_mut(ROM_START_ADDRESS..rom_end)
+            .ok_or(Chip8Error::RomLoadError {
                 size: rom.len(),
                 max_size: MEMORY_SIZE - ROM_START_ADDRESS,
-            });
-        }
+            })?
+            .copy_from_slice(rom);
 
-        self.memory[ROM_START_ADDRESS..rom_end].copy_from_slice(rom);
         self.pc = ROM_START_ADDRESS as u16;
 
         Ok(())

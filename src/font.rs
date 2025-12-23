@@ -17,3 +17,8 @@ pub const FONT: [u8; 16 * 5] = [
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 ];
+
+// Memory addresses where the font data should be loaded.
+// These are specified by the CHIP-8 specification.
+pub const FONT_START_ADDRESS: usize = 0x50;
+pub const FONT_END_ADDRESS: usize = FONT_START_ADDRESS + FONT.len();

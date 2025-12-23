@@ -61,7 +61,7 @@ impl App {
         audio_sink.append(SquareWave::new(440.0).amplify(0.5));
 
         let mut chip8 = Chip8::default();
-        chip8.load_rom(rom).expect("Failed to load ROM");
+        chip8.load(rom).expect("Failed to load ROM");
 
         Self {
             pixels: None,
