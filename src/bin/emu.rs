@@ -36,6 +36,7 @@ const KEY_MAP: [KeyCode; 16] = [
 struct App {
     pixels: Option<Pixels<'static>>,
     window: Option<Arc<Window>>,
+    /// Stores the brightness of each pixel (0.0 to 1.0) to implement phosphor decay.
     display_float: Display<f32>,
 
     _audio_stream: OutputStream,
@@ -79,9 +80,14 @@ impl App {
             let x = i % DISPLAY_X;
             let y = i / DISPLAY_X;
 
+            // We use display_float to track the "brightness" of each pixel over time.
+            // This allows us to implement a phosphor decay effect where pixels fade out
+            // slowly instead of turning off instantly.
             self.display_float[y][x] = if self.runner.get_display_pixel(y, x) {
+                // Pixel is currently on, set to full brightness
                 1.0
             } else {
+                // Pixel is off, but we decay the previous brightness value based on elapsed time
                 (self.display_float[y][x] - DISPLAY_PHOSPHOR_RATE * dt).max(0.0)
             };
 
