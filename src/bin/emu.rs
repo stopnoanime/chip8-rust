@@ -11,10 +11,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use chip8_rust::{
-    CPU_TIME_STEP, Chip8, Chip8Error, Chip8Result, DISPLAY_X, DISPLAY_Y, Display, TIMER_TIME_STEP,
-    u4,
-};
+use chip8_rust::{Chip8, Chip8Runner, DISPLAY_X, DISPLAY_Y, Display, u4};
 
 const DISPLAY_PHOSPHOR_RATE: f32 = 10.0;
 const KEY_MAP: [KeyCode; 16] = [
@@ -44,10 +41,8 @@ struct App {
     _audio_stream: OutputStream,
     audio_sink: Sink,
 
-    chip8: Chip8,
+    runner: Chip8Runner,
     last_frame_instant: Instant,
-    cpu_dt_accumulator: f32,
-    timer_dt_accumulator: f32,
 }
 
 impl App {
@@ -62,6 +57,7 @@ impl App {
 
         let mut chip8 = Chip8::default();
         chip8.load(rom).expect("Failed to load ROM");
+        let runner = Chip8Runner::new(chip8);
 
         Self {
             pixels: None,
@@ -71,43 +67,9 @@ impl App {
             _audio_stream,
             audio_sink,
 
-            chip8,
+            runner,
             last_frame_instant: Instant::now(),
-            cpu_dt_accumulator: 0.0,
-            timer_dt_accumulator: 0.0,
         }
-    }
-
-    fn process_cpu(&mut self, dt: f32) -> Result<(), Chip8Error> {
-        self.cpu_dt_accumulator += dt;
-        self.timer_dt_accumulator += dt;
-
-        while self.cpu_dt_accumulator >= CPU_TIME_STEP {
-            self.cpu_dt_accumulator -= CPU_TIME_STEP;
-            match self.chip8.cpu_cycle() {
-                Ok(Chip8Result::NextFrame) => {
-                    // Don't execute further cycles this frame
-                    break;
-                }
-                Ok(Chip8Result::Continue) => {}
-                Err(e) => {
-                    return Err(e);
-                }
-            }
-        }
-
-        while self.timer_dt_accumulator >= TIMER_TIME_STEP {
-            self.chip8.timers_cycle();
-            self.timer_dt_accumulator -= TIMER_TIME_STEP;
-        }
-
-        if self.chip8.should_beep() {
-            self.audio_sink.play();
-        } else {
-            self.audio_sink.pause();
-        }
-
-        Ok(())
     }
 
     fn process_display(&mut self, dt: f32) {
@@ -117,7 +79,7 @@ impl App {
             let x = i % DISPLAY_X;
             let y = i / DISPLAY_X;
 
-            self.display_float[y][x] = if self.chip8.get_display_pixel(y, x) {
+            self.display_float[y][x] = if self.runner.get_display_pixel(y, x) {
                 1.0
             } else {
                 (self.display_float[y][x] - DISPLAY_PHOSPHOR_RATE * dt).max(0.0)
@@ -201,10 +163,16 @@ impl ApplicationHandler for App {
                 let dt = (now - self.last_frame_instant).as_secs_f32();
                 self.last_frame_instant = now;
 
-                if let Err(e) = self.process_cpu(dt) {
+                if let Err(e) = self.runner.update(dt) {
                     eprintln!("Chip8 Error: {:?}", e);
                     event_loop.exit();
                     return;
+                }
+
+                if self.runner.should_beep() {
+                    self.audio_sink.play();
+                } else {
+                    self.audio_sink.pause();
                 }
 
                 self.process_display(dt);
@@ -221,12 +189,12 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => match event.state {
                 ElementState::Pressed => {
                     if let Some(key) = KEY_MAP.iter().position(|&k| k == event.physical_key) {
-                        self.chip8.set_key(u4::new(key as u8), true);
+                        self.runner.set_key(u4::new(key as u8), true);
                     }
                 }
                 ElementState::Released => {
                     if let Some(key) = KEY_MAP.iter().position(|&k| k == event.physical_key) {
-                        self.chip8.set_key(u4::new(key as u8), false);
+                        self.runner.set_key(u4::new(key as u8), false);
                     }
                 }
             },

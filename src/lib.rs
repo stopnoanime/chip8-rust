@@ -1,18 +1,13 @@
 mod font;
 mod nibble;
+mod runner;
 
 use font::{FONT, FONT_END_ADDRESS, FONT_START_ADDRESS};
 pub use nibble::u4;
+pub use runner::Chip8Runner;
 
 pub const DISPLAY_X: usize = 64;
 pub const DISPLAY_Y: usize = 32;
-
-pub const CPU_HZ: f32 = 700.0;
-pub const TIMER_HZ: f32 = 60.0;
-
-pub const CPU_TIME_STEP: f32 = 1.0 / CPU_HZ;
-pub const TIMER_TIME_STEP: f32 = 1.0 / TIMER_HZ;
-
 pub type Display<T> = [[T; DISPLAY_X]; DISPLAY_Y];
 
 // The constants are specified by the CHIP-8 specification
@@ -357,7 +352,7 @@ impl Chip8 {
         }
 
         self.v[0xF] = if any_erased { 1 } else { 0 };
-        Ok(Chip8Result::NextFrame)
+        Ok(Chip8Result::WaitForNextFrame)
     }
 
     fn execute_wait_for_key(&mut self, x: u4) -> Chip8Result {
@@ -382,7 +377,7 @@ impl Chip8 {
 
         // Repeat this instruction until a key is released
         self.pc = self.pc.wrapping_sub(2);
-        Chip8Result::NextFrame
+        Chip8Result::WaitForNextFrame
     }
 
     fn mem_get(&mut self, addr: u16) -> Result<&mut u8, Chip8Error> {
@@ -452,7 +447,7 @@ pub enum OpcodeALU {
 
 pub enum Chip8Result {
     Continue,
-    NextFrame,
+    WaitForNextFrame,
 }
 
 #[derive(Debug)]
