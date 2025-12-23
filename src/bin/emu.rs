@@ -1,5 +1,6 @@
-use std::{sync::Arc, time::Instant};
+use std::{path::PathBuf, sync::Arc, time::Instant};
 
+use clap::Parser;
 use pixels::{Pixels, SurfaceTexture};
 use rodio::{OutputStream, OutputStreamBuilder, Sink, Source, source::SquareWave};
 use winit::{
@@ -210,21 +211,21 @@ impl ApplicationHandler for App {
     }
 }
 
+/// CHIP-8 emulator written in Rust.
+///
+/// Keys 1-4, Q-R, A-F, Z-V map to CHIP-8 keys.
+/// Escape is used to exit the emulator.
+#[derive(Parser, Debug)]
+#[command(about)]
+struct Args {
+    /// Path to the CHIP-8 ROM file
+    rom_path: PathBuf,
+}
+
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let args = Args::parse();
 
-    if args.len() != 2 || args[1] == "-h" {
-        println!(
-            "Usage:\n\t{} <rom_path>\n\n\
-            Description:\n\tThis is a CHIP-8 emulator written in Rust.\n\n\
-            Keybindings:\n\t1-4, Q-R, A-F, Z-V: Map to CHIP-8 keys\n\t\
-            Escape: Exit the emulator\n",
-            args[0]
-        );
-        std::process::exit(1);
-    }
-
-    let rom = std::fs::read(&args[1]).expect("Failed to read ROM file");
+    let rom = std::fs::read(&args.rom_path).expect("Failed to read ROM file");
 
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.5.53", features = ["derive"] }
 pixels = "0.15.0"
 rand = "0.9.2"
 rodio = { version = "0.21.1", default-features = false, features = ["playback"]}
