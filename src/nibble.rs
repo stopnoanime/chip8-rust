@@ -6,7 +6,8 @@ pub struct u4(u8);
 
 impl u4 {
     pub const fn new(value: u8) -> Self {
-        Self(value & 0x0F)
+        assert!(value <= 0x0F, "u4 value must be in range 0x0-0xF");
+        Self(value)
     }
 }
 
