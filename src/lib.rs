@@ -1,7 +1,7 @@
 mod font;
 mod nibble;
 
-use nibble::u4;
+pub use nibble::u4;
 
 pub const DISPLAY_X: usize = 64;
 pub const DISPLAY_Y: usize = 32;
@@ -14,24 +14,36 @@ pub const TIMER_TIME_STEP: f32 = 1.0 / TIMER_HZ;
 
 pub type Display<T> = [[T; DISPLAY_X]; DISPLAY_Y];
 
+// The constants are specified by the CHIP-8 specification
 const FONT_START_ADDRESS: usize = 0x50;
 const ROM_START_ADDRESS: usize = 0x200;
 const MEMORY_SIZE: usize = 4096;
 
+/// CHIP-8 virtual machine state
 pub struct Chip8 {
-    pub memory: [u8; MEMORY_SIZE],
-    pub display: Display<bool>,
+    /// 4KB memory array
+    pub(crate) memory: [u8; MEMORY_SIZE],
+    /// Display buffer: 64x32 monochrome pixels
+    pub(crate) display: Display<bool>,
 
-    pub pc: u16,
-    pub i: u16,
-    pub v: [u8; 16],
-    pub stack: Vec<u16>,
+    /// Program counter: address of the next instruction to execute
+    pub(crate) pc: u16,
+    /// Index register: used for memory operations
+    pub(crate) i: u16,
+    /// General-purpose registers V0-VF (VF is used as a flag register)
+    pub(crate) v: [u8; 16],
+    /// Call stack for subroutine returns
+    pub(crate) stack: Vec<u16>,
 
-    pub delay_timer: u8,
-    pub sound_timer: u8,
+    /// Delay timer: decrements at 60Hz until it reaches 0
+    pub(crate) delay_timer: u8,
+    /// Sound timer: decrements at 60Hz, beeps while non-zero
+    pub(crate) sound_timer: u8,
 
-    pub wait_release_key: Option<u8>,
-    pub keypad: [bool; 16],
+    /// Tracks which key is waiting to be released for the FX0A instruction
+    pub(crate) wait_release_key: Option<u8>,
+    /// Keypad state: 16 keys mapped as booleans (true = pressed)
+    pub(crate) keypad: [bool; 16],
 }
 
 impl Chip8 {
@@ -81,6 +93,16 @@ impl Chip8 {
 
     pub fn should_beep(&self) -> bool {
         self.sound_timer > 0
+    }
+
+    /// Set the state of a key on the keypad
+    pub fn set_key(&mut self, key: u4, pressed: bool) {
+        self.keypad[key] = pressed;
+    }
+
+    // Get the state of a pixel on the display, true = on, false = off
+    pub fn get_display_pixel(&self, y: usize, x: usize) -> bool {
+        self.display[y][x]
     }
 
     pub fn fetch(&mut self) -> Result<u16, Chip8Error> {

@@ -17,15 +17,15 @@ impl From<u4> for usize {
     }
 }
 
-impl Index<u4> for [u8; 16] {
-    type Output = u8;
+impl<T> Index<u4> for [T; 16] {
+    type Output = T;
 
     fn index(&self, index: u4) -> &Self::Output {
         &self[index.0 as usize]
     }
 }
 
-impl IndexMut<u4> for [u8; 16] {
+impl<T> IndexMut<u4> for [T; 16] {
     fn index_mut(&mut self, index: u4) -> &mut Self::Output {
         &mut self[index.0 as usize]
     }

@@ -13,6 +13,7 @@ use winit::{
 
 use chip8_rust::{
     CPU_TIME_STEP, Chip8, Chip8Error, Chip8Result, DISPLAY_X, DISPLAY_Y, Display, TIMER_TIME_STEP,
+    u4,
 };
 
 const DISPLAY_PHOSPHOR_RATE: f32 = 10.0;
@@ -116,7 +117,7 @@ impl App {
             let x = i % DISPLAY_X;
             let y = i / DISPLAY_X;
 
-            self.display_float[y][x] = if self.chip8.display[y][x] {
+            self.display_float[y][x] = if self.chip8.get_display_pixel(y, x) {
                 1.0
             } else {
                 (self.display_float[y][x] - DISPLAY_PHOSPHOR_RATE * dt).max(0.0)
@@ -220,12 +221,12 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => match event.state {
                 ElementState::Pressed => {
                     if let Some(key) = KEY_MAP.iter().position(|&k| k == event.physical_key) {
-                        self.chip8.keypad[key] = true;
+                        self.chip8.set_key(u4::new(key as u8), true);
                     }
                 }
                 ElementState::Released => {
                     if let Some(key) = KEY_MAP.iter().position(|&k| k == event.physical_key) {
-                        self.chip8.keypad[key] = false;
+                        self.chip8.set_key(u4::new(key as u8), false);
                     }
                 }
             },
