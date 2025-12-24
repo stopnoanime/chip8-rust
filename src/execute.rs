@@ -5,6 +5,8 @@ use crate::{
 
 impl Chip8 {
     pub(crate) fn execute(&mut self, opcode: Opcode) -> Result<Chip8Result, Chip8Error> {
+        // Increment PC by 2 (size of one instruction) before execution.
+        // Some instructions (Jump, Call, Skip) will modify PC further.
         self.pc = self.pc.wrapping_add(2);
 
         match opcode {
@@ -144,12 +146,12 @@ impl Chip8 {
             OpcodeALU::Sub => {
                 let (res, borrow) = self.v[x].overflowing_sub(self.v[y]);
                 self.v[x] = res;
-                self.v[0xF] = if borrow { 0 } else { 1 }; // Notice that borrow is inverted
+                self.v[0xF] = if borrow { 0 } else { 1 }; // VF = 1 if no borrow
             }
             OpcodeALU::SubReverse => {
                 let (res, borrow) = self.v[y].overflowing_sub(self.v[x]);
                 self.v[x] = res;
-                self.v[0xF] = if borrow { 0 } else { 1 };
+                self.v[0xF] = if borrow { 0 } else { 1 }; // VF = 1 if no borrow
             }
             OpcodeALU::ShiftRight => {
                 let lsb = self.v[y] & 1;
@@ -164,6 +166,7 @@ impl Chip8 {
         }
     }
 
+    /// Draws a sprite at coordinate (Vx, Vy) with height n bytes.
     fn execute_draw(&mut self, x: u4, y: u4, n: u4) -> Result<Chip8Result, Chip8Error> {
         let x_pos = self.v[x] as usize % DISPLAY_X;
         let y_pos = self.v[y] as usize % DISPLAY_Y;
@@ -184,6 +187,7 @@ impl Chip8 {
                     // Flip the pixel
                     *pixel ^= true;
 
+                    // If pixel was turned off, set erased flag
                     if !*pixel {
                         any_erased = true;
                     }
@@ -195,6 +199,9 @@ impl Chip8 {
         Ok(Chip8Result::WaitForNextFrame)
     }
 
+    /// Executes the WaitForKey instruction (Fx0A).
+    ///
+    /// This instruction blocks until a key is pressed and then released.
     fn execute_wait_for_key(&mut self, x: u4) -> Chip8Result {
         if let Some(key) = self.wait_release_key
             && !self.keypad[key as usize]
@@ -215,7 +222,7 @@ impl Chip8 {
             }
         }
 
-        // Repeat this instruction until a key is released
+        // Repeat this instruction until a key is released by decrementing PC
         self.pc = self.pc.wrapping_sub(2);
         Chip8Result::WaitForNextFrame
     }

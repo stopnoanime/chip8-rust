@@ -1,4 +1,6 @@
-// Taken from https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#font
+/// The default CHIP-8 font set.
+///
+/// Taken from https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#font
 pub const FONT: [u8; 16 * 5] = [
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1

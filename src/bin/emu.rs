@@ -15,7 +15,10 @@ use winit::{
 
 use chip8_rust::{Chip8, Chip8Runner, DISPLAY_X, DISPLAY_Y, Display, u4};
 
+/// The rate at which pixels fade out (phosphor decay).
 const DISPLAY_PHOSPHOR_RATE: f32 = 10.0;
+
+/// Mapping from physical keyboard keys to CHIP-8 hex keypad (0x0-0xF).
 const KEY_MAP: [KeyCode; 16] = [
     KeyCode::KeyX,   // 0x00
     KeyCode::Digit1, // 0x01
@@ -41,10 +44,12 @@ struct App {
     /// Stores the brightness of each pixel (0.0 to 1.0) to implement phosphor decay.
     display_float: Display<f32>,
 
+    /// Audio output stream (must be kept alive).
     _audio_stream: OutputStream,
     audio_sink: Sink,
 
     runner: Chip8Runner,
+    /// Used for delta time calculation.
     last_frame_instant: Instant,
 
     /// Stores the result of the application to be returned from main.
@@ -53,6 +58,7 @@ struct App {
 
 impl App {
     fn new(rom: &[u8]) -> anyhow::Result<Self> {
+        // Initialize audio
         let mut _audio_stream = OutputStreamBuilder::open_default_stream()
             .context("Failed to open audio output stream")?;
         _audio_stream.log_on_drop(false);
@@ -61,6 +67,7 @@ impl App {
         audio_sink.pause();
         audio_sink.append(SquareWave::new(440.0).amplify(0.5));
 
+        // Initialize CHIP-8
         let mut chip8 = Chip8::default();
         chip8
             .load(rom)
@@ -248,5 +255,6 @@ fn main() -> anyhow::Result<()> {
         .run_app(&mut app)
         .context("Error occurred during event loop execution")?;
 
+    // Return the result captured during the event loop
     app.exit_result
 }

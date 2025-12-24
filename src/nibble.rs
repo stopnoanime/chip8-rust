@@ -1,10 +1,14 @@
 use std::ops::{Index, IndexMut};
 
+/// A 4-bit unsigned integer (nibble).
 #[derive(Clone, Copy)]
 #[allow(non_camel_case_types)]
 pub struct u4(u8);
 
 impl u4 {
+    /// Creates a new `u4` from a `u8`.
+    ///
+    /// Panics if the value is greater than 0x0F.
     pub const fn new(value: u8) -> Self {
         assert!(value <= 0x0F, "u4 value must be in range 0x0-0xF");
         Self(value)

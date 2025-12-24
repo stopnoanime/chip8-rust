@@ -51,9 +51,12 @@ impl Chip8 {
         }
     }
 
+    /// Loads a ROM into memory and initializes the font set.
     pub fn load(&mut self, rom: &[u8]) -> Result<(), Chip8Error> {
+        // Load font into memory
         self.memory[FONT_START_ADDRESS..FONT_END_ADDRESS].copy_from_slice(&FONT);
 
+        // Load ROM into memory
         let rom_end = ROM_START_ADDRESS + rom.len();
         self.memory
             .get_mut(ROM_START_ADDRESS..rom_end)
@@ -63,36 +66,41 @@ impl Chip8 {
             })?
             .copy_from_slice(rom);
 
+        // Set program counter to start of ROM
         self.pc = ROM_START_ADDRESS as u16;
 
         Ok(())
     }
 
+    /// Executes a single CPU cycle (fetch, decode, execute).
     pub fn cpu_cycle(&mut self) -> Result<Chip8Result, Chip8Error> {
         let opcode = self.fetch()?;
         let decoded_opcode = Opcode::decode(opcode);
         self.execute(decoded_opcode)
     }
 
+    /// Updates the delay and sound timers. Should be called at 60Hz.
     pub fn timers_cycle(&mut self) {
         self.delay_timer = self.delay_timer.saturating_sub(1);
         self.sound_timer = self.sound_timer.saturating_sub(1);
     }
 
+    /// Returns true if the sound timer is greater than zero, indicating a beep should be played.
     pub fn should_beep(&self) -> bool {
         self.sound_timer > 0
     }
 
-    /// Set the state of a key on the keypad
+    /// Set the state of a key on the keypad.
     pub fn set_key(&mut self, key: u4, pressed: bool) {
         self.keypad[key] = pressed;
     }
 
-    /// Get the state of a pixel on the display, true = on, false = off
+    /// Get the state of a pixel on the display (true = on, false = off).
     pub fn get_display_pixel(&self, y: usize, x: usize) -> bool {
         self.display[y][x]
     }
 
+    /// Fetches the next 16-bit opcode from memory.
     fn fetch(&mut self) -> Result<u16, Chip8Error> {
         let high = *self.mem_get(self.pc)?;
         let low = *self.mem_get(self.pc.wrapping_add(1))?;
@@ -100,6 +108,7 @@ impl Chip8 {
         Ok(u16::from_be_bytes([high, low]))
     }
 
+    /// Helper to get a mutable reference to a memory location with bounds checking.
     pub(crate) fn mem_get(&mut self, addr: u16) -> Result<&mut u8, Chip8Error> {
         self.memory
             .get_mut(addr as usize)

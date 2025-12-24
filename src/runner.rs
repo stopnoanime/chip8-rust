@@ -23,8 +23,9 @@ impl Chip8Runner {
     }
 
     /// Update emulator by delta time, handles both CPU and timer cycles.
-    /// Runs as many CPU cycles and timer updates as needed based on the elapsed time.
-    /// Returns early if a frame has to be rendered before next CPU cycle (Chip8Result::WaitForNextFrame).
+    ///
+    /// Runs as many CPU cycles and timer updates as needed based on the elapsed time `dt`.
+    /// Returns early if a frame has to be rendered before the next CPU cycle (Chip8Result::WaitForNextFrame).
     pub fn update(&mut self, dt: f32) -> Result<Chip8Result, Chip8Error> {
         self.cpu_dt_accumulator += dt;
         self.timer_dt_accumulator += dt;
@@ -38,7 +39,8 @@ impl Chip8Runner {
             self.cpu_dt_accumulator -= CPU_TIME_STEP;
             match self.chip8.cpu_cycle()? {
                 Chip8Result::WaitForNextFrame => {
-                    // If we need to wait for the next frame anyway, do not accumulate leftover time
+                    // If we need to wait for the next frame we stop executing cycles.
+                    // We also clear the accumulator to avoid "catching up" too fast in the next frame.
                     self.cpu_dt_accumulator = 0.0;
                     return Ok(Chip8Result::WaitForNextFrame);
                 }
@@ -49,17 +51,17 @@ impl Chip8Runner {
         Ok(Chip8Result::Continue)
     }
 
-    /// Check if the emulator should be making a beep sound
+    /// Returns true if the sound timer is active, indicating a beep should be played.
     pub fn should_beep(&self) -> bool {
         self.chip8.should_beep()
     }
 
-    /// Set the state of a key on the keypad
+    /// Set the state of a key on the keypad.
     pub fn set_key(&mut self, key: u4, pressed: bool) {
         self.chip8.set_key(key, pressed)
     }
 
-    // Get the state of a pixel on the display, true = on, false = off
+    /// Get the state of a pixel on the display (true = on, false = off).
     pub fn get_display_pixel(&self, y: usize, x: usize) -> bool {
         self.chip8.get_display_pixel(y, x)
     }

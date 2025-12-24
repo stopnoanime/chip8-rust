@@ -1,8 +1,9 @@
 /// Result type for CHIP-8 CPU cycle execution
 pub enum Chip8Result {
-    /// Continue executing instructions
+    /// Continue executing instructions in the current frame.
     Continue,
-    /// Wait for the next frame before continuing (e.g., after a draw instruction)
+    /// Wait for the next frame before continuing
+    /// (e.g., after a draw instruction to limit the display update rate to the frame rate).
     WaitForNextFrame,
 }
 
@@ -27,4 +28,5 @@ pub enum Chip8Error {
 
 pub const DISPLAY_X: usize = 64;
 pub const DISPLAY_Y: usize = 32;
+/// A type alias for the CHIP-8 display buffer representation
 pub type Display<T> = [[T; DISPLAY_X]; DISPLAY_Y];
