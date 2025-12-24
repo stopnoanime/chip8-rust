@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc, time::Instant};
 
+use anyhow::Context;
 use clap::Parser;
 use pixels::{Pixels, SurfaceTexture};
 use rodio::{OutputStream, OutputStreamBuilder, Sink, Source, source::SquareWave};
@@ -45,12 +46,15 @@ struct App {
 
     runner: Chip8Runner,
     last_frame_instant: Instant,
+
+    /// Stores the result of the application to be returned from main.
+    exit_result: anyhow::Result<()>,
 }
 
 impl App {
-    fn new(rom: &[u8]) -> Self {
-        let mut _audio_stream =
-            OutputStreamBuilder::open_default_stream().expect("Failed to open audio output stream");
+    fn new(rom: &[u8]) -> anyhow::Result<Self> {
+        let mut _audio_stream = OutputStreamBuilder::open_default_stream()
+            .context("Failed to open audio output stream")?;
         _audio_stream.log_on_drop(false);
 
         let audio_sink = Sink::connect_new(_audio_stream.mixer());
@@ -58,10 +62,12 @@ impl App {
         audio_sink.append(SquareWave::new(440.0).amplify(0.5));
 
         let mut chip8 = Chip8::default();
-        chip8.load(rom).expect("Failed to load ROM");
+        chip8
+            .load(rom)
+            .context("Failed to load ROM into CHIP-8 memory")?;
         let runner = Chip8Runner::new(chip8);
 
-        Self {
+        Ok(Self {
             pixels: None,
             window: None,
             display_float: [[0.0; DISPLAY_X]; DISPLAY_Y],
@@ -71,7 +77,8 @@ impl App {
 
             runner,
             last_frame_instant: Instant::now(),
-        }
+            exit_result: Ok(()),
+        })
     }
 
     fn process_display(&mut self, dt: f32) {
@@ -96,10 +103,8 @@ impl App {
             pxl.copy_from_slice(&rgba);
         }
     }
-}
 
-impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+    fn try_resumed(&mut self, event_loop: &ActiveEventLoop) -> anyhow::Result<()> {
         let window = {
             let size = LogicalSize::new(DISPLAY_X as u32 * 10, DISPLAY_Y as u32 * 10);
             let min_size = LogicalSize::new(DISPLAY_X as u32, DISPLAY_Y as u32);
@@ -112,7 +117,7 @@ impl ApplicationHandler for App {
                             .with_inner_size(size)
                             .with_min_inner_size(min_size),
                     )
-                    .unwrap(),
+                    .context("Failed to create window")?,
             )
         };
 
@@ -122,24 +127,23 @@ impl ApplicationHandler for App {
             let surface_texture =
                 SurfaceTexture::new(window_size.width, window_size.height, window.clone());
 
-            match Pixels::new(DISPLAY_X as u32, DISPLAY_Y as u32, surface_texture) {
-                Ok(pixels) => {
-                    window.request_redraw();
-                    Some(pixels)
-                }
-                Err(err) => {
-                    eprintln!("Error creating pixels surface: {}", err);
-                    event_loop.exit();
-                    None
-                }
-            }
+            let pixels = Pixels::new(DISPLAY_X as u32, DISPLAY_Y as u32, surface_texture)
+                .context("Failed to create pixels surface")?;
+
+            window.request_redraw();
+            Some(pixels)
         };
 
         // Avoid large dt on first frame
         self.last_frame_instant = Instant::now();
+        Ok(())
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn try_window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        event: WindowEvent,
+    ) -> anyhow::Result<()> {
         match event {
             WindowEvent::CloseRequested
             | WindowEvent::KeyboardInput {
@@ -154,15 +158,11 @@ impl ApplicationHandler for App {
             }
 
             WindowEvent::Resized(size) => {
-                if let Err(err) = self
-                    .pixels
+                self.pixels
                     .as_mut()
                     .unwrap()
                     .resize_surface(size.width, size.height)
-                {
-                    eprintln!("Error resizing pixels surface: {}", err);
-                    event_loop.exit();
-                }
+                    .context("Failed to resize pixels surface")?;
             }
 
             WindowEvent::RedrawRequested => {
@@ -170,11 +170,7 @@ impl ApplicationHandler for App {
                 let dt = (now - self.last_frame_instant).as_secs_f32();
                 self.last_frame_instant = now;
 
-                if let Err(e) = self.runner.update(dt) {
-                    eprintln!("Chip8 Error: {:?}", e);
-                    event_loop.exit();
-                    return;
-                }
+                self.runner.update(dt).context("Chip8 Execution error")?;
 
                 if self.runner.should_beep() {
                     self.audio_sink.play();
@@ -184,11 +180,11 @@ impl ApplicationHandler for App {
 
                 self.process_display(dt);
 
-                if let Err(e) = self.pixels.as_ref().unwrap().render() {
-                    eprintln!("Pixels render error: {}", e);
-                    event_loop.exit();
-                    return;
-                }
+                self.pixels
+                    .as_ref()
+                    .unwrap()
+                    .render()
+                    .context("Pixels render error")?;
 
                 self.window.as_ref().unwrap().request_redraw();
             }
@@ -208,6 +204,23 @@ impl ApplicationHandler for App {
 
             _ => (),
         }
+        Ok(())
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if let Err(e) = self.try_resumed(event_loop) {
+            self.exit_result = Err(e);
+            event_loop.exit();
+        }
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if let Err(e) = self.try_window_event(event_loop, event) {
+            self.exit_result = Err(e);
+            event_loop.exit();
+        }
     }
 }
 
@@ -222,14 +235,18 @@ struct Args {
     rom_path: PathBuf,
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let rom = std::fs::read(&args.rom_path).expect("Failed to read ROM file");
+    let rom = std::fs::read(&args.rom_path).context("Failed to read ROM file")?;
 
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop = EventLoop::new().context("Failed to create event loop")?;
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = App::new(&rom);
-    event_loop.run_app(&mut app).expect("Error running app");
+    let mut app = App::new(&rom).context("Failed to initialize application")?;
+    event_loop
+        .run_app(&mut app)
+        .context("Error occurred during event loop execution")?;
+
+    app.exit_result
 }

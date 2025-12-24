@@ -113,6 +113,9 @@ impl Chip8 {
             Opcode::Unknown(opcode) => {
                 return Err(Chip8Error::UnknownOpcode { opcode });
             }
+            Opcode::UnknownALU(opcode) => {
+                return Err(Chip8Error::UnknownALUOpcode { opcode });
+            }
         };
 
         Ok(Chip8Result::Continue)

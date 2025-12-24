@@ -7,16 +7,22 @@ pub enum Chip8Result {
 }
 
 /// Error types that can occur during CHIP-8 emulation
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Chip8Error {
-    /// ROM is too large to fit in available memory
+    #[error("ROM is too large ({size} bytes), max size is {max_size} bytes")]
     RomLoadError { size: usize, max_size: usize },
-    /// Attempted to access memory outside valid range
+
+    #[error("Memory access out of bounds at address {address:#06X}")]
     MemoryOutOfBounds { address: u16 },
-    /// Attempted to return from a subroutine with empty call stack
+
+    #[error("Stack underflow: attempted to return from a subroutine with empty call stack")]
     StackUnderflow,
-    /// Encountered an unknown/invalid opcode
+
+    #[error("Unknown opcode: {opcode:#06X}")]
     UnknownOpcode { opcode: u16 },
+
+    #[error("Unknown ALU operation at opcode: {opcode:#06X}")]
+    UnknownALUOpcode { opcode: u16 },
 }
 
 pub const DISPLAY_X: usize = 64;

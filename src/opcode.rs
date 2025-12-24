@@ -39,6 +39,7 @@ pub enum Opcode {
     LoadRegs { x: u4 },
 
     Unknown(u16),
+    UnknownALU(u16),
 }
 
 pub enum OpcodeALU {
@@ -92,7 +93,7 @@ impl Opcode {
                     0x6 => OpcodeALU::ShiftRight,
                     0x7 => OpcodeALU::SubReverse,
                     0xE => OpcodeALU::ShiftLeft,
-                    _ => return Opcode::Unknown(opcode),
+                    _ => return Opcode::UnknownALU(opcode),
                 },
             },
             (0x9, _, _, 0x0) => Opcode::SkipRegNotEqualReg { x, y },
