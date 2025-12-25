@@ -1,7 +1,7 @@
-use crate::{
-    Chip8, Chip8Error, Chip8Result, DISPLAY_X, DISPLAY_Y, Opcode, OpcodeALU,
-    font::FONT_START_ADDRESS, u4,
+use super::{
+    Chip8, Chip8Error, Chip8Result, DISPLAY_X, DISPLAY_Y, FONT_START_ADDRESS, Opcode, OpcodeALU,
 };
+use crate::u4;
 
 impl Chip8 {
     pub(crate) fn execute(&mut self, opcode: Opcode) -> Result<Chip8Result, Chip8Error> {

@@ -1,4 +1,6 @@
-use crate::{Chip8, Chip8Error, Chip8Result, u4};
+use super::{Chip8, Chip8Error, Chip8Result};
+use crate::u4;
+use std::collections::HashSet;
 
 const CPU_HZ: f32 = 700.0;
 const TIMER_HZ: f32 = 60.0;
@@ -13,6 +15,11 @@ pub struct Chip8Runner {
     timer_dt_accumulator: f32,
 }
 
+pub enum Chip8RunnerResult {
+    HitBreakpoint,
+    Ok,
+}
+
 impl Chip8Runner {
     pub fn new(chip8: Chip8) -> Self {
         Self {
@@ -25,30 +32,49 @@ impl Chip8Runner {
     /// Update emulator by delta time, handles both CPU and timer cycles.
     ///
     /// Runs as many CPU cycles and timer updates as needed based on the elapsed time `dt`.
-    /// Returns early if a frame has to be rendered before the next CPU cycle (Chip8Result::WaitForNextFrame).
-    pub fn update(&mut self, dt: f32) -> Result<Chip8Result, Chip8Error> {
+    /// Returns early if a frame has to be rendered before the next CPU cycle.
+    pub fn update(&mut self, dt: f32) -> Result<Chip8RunnerResult, Chip8Error> {
+        self.update_with_breakpoints(dt, None)
+    }
+
+    /// Like `update` but checks for breakpoints after each CPU cycle.
+    pub fn update_with_breakpoints(
+        &mut self,
+        dt: f32,
+        breakpoints: Option<&HashSet<u16>>,
+    ) -> Result<Chip8RunnerResult, Chip8Error> {
         self.cpu_dt_accumulator += dt;
         self.timer_dt_accumulator += dt;
 
         while self.timer_dt_accumulator >= TIMER_TIME_STEP {
-            self.chip8.timers_cycle();
             self.timer_dt_accumulator -= TIMER_TIME_STEP;
+            self.chip8.timers_cycle();
         }
 
         while self.cpu_dt_accumulator >= CPU_TIME_STEP {
             self.cpu_dt_accumulator -= CPU_TIME_STEP;
-            match self.chip8.cpu_cycle()? {
+
+            let cpu_result = self.chip8.cpu_cycle()?;
+
+            if let Some(breakpoints) = &breakpoints {
+                if breakpoints.contains(&self.chip8.pc) {
+                    self.cpu_dt_accumulator = 0.0;
+                    return Ok(Chip8RunnerResult::HitBreakpoint);
+                }
+            }
+
+            match cpu_result {
                 Chip8Result::WaitForNextFrame => {
                     // If we need to wait for the next frame we stop executing cycles.
-                    // We also clear the accumulator to avoid "catching up" too fast in the next frame.
+                    // We clear the accumulator to avoid "catching up" in the next frame.
                     self.cpu_dt_accumulator = 0.0;
-                    return Ok(Chip8Result::WaitForNextFrame);
+                    break;
                 }
                 Chip8Result::Continue => {}
             }
         }
 
-        Ok(Chip8Result::Continue)
+        Ok(Chip8RunnerResult::Ok)
     }
 
     /// Returns true if the sound timer is active, indicating a beep should be played.
@@ -64,5 +90,13 @@ impl Chip8Runner {
     /// Get the state of a pixel on the display (true = on, false = off).
     pub fn get_display_pixel(&self, y: usize, x: usize) -> bool {
         self.chip8.get_display_pixel(y, x)
+    }
+
+    pub fn chip8_ref(&self) -> &Chip8 {
+        &self.chip8
+    }
+
+    pub fn chip8_mut(&mut self) -> &mut Chip8 {
+        &mut self.chip8
     }
 }

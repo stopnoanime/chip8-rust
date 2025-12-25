@@ -1,8 +1,8 @@
-use crate::{
-    Chip8Error, Chip8Result, DISPLAY_X, DISPLAY_Y, Display, Opcode,
-    font::{FONT, FONT_END_ADDRESS, FONT_START_ADDRESS},
-    u4,
+use super::{
+    Chip8Error, Chip8Result, DISPLAY_X, DISPLAY_Y, Display, FONT, FONT_END_ADDRESS,
+    FONT_START_ADDRESS, Opcode,
 };
+use crate::u4;
 
 // The constants are specified by the CHIP-8 specification
 const ROM_START_ADDRESS: usize = 0x200;

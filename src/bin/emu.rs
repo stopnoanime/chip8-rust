@@ -13,7 +13,8 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use chip8_rust::{Chip8, Chip8Runner, DISPLAY_X, DISPLAY_Y, Display, u4};
+use chip8_rust::chip8::{Chip8, Chip8Runner, DISPLAY_X, DISPLAY_Y, Display};
+use chip8_rust::u4;
 
 /// The rate at which pixels fade out (phosphor decay).
 const DISPLAY_PHOSPHOR_RATE: f32 = 10.0;
@@ -235,7 +236,7 @@ impl ApplicationHandler for App {
 ///
 /// Keys 1-4, Q-R, A-F, Z-V map to CHIP-8 keys.
 /// Escape is used to exit the emulator.
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(about)]
 struct Args {
     /// Path to the CHIP-8 ROM file
