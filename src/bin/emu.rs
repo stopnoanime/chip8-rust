@@ -197,18 +197,14 @@ impl App {
                 self.window.as_ref().unwrap().request_redraw();
             }
 
-            WindowEvent::KeyboardInput { event, .. } => match event.state {
-                ElementState::Pressed => {
-                    if let Some(key) = KEY_MAP.iter().position(|&k| k == event.physical_key) {
-                        self.runner.set_key(u4::new(key as u8), true);
-                    }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let Some(key) = KEY_MAP.iter().position(|&k| k == event.physical_key) {
+                    self.runner.set_key(
+                        u4::new(key as u8),
+                        matches!(event.state, ElementState::Pressed),
+                    );
                 }
-                ElementState::Released => {
-                    if let Some(key) = KEY_MAP.iter().position(|&k| k == event.physical_key) {
-                        self.runner.set_key(u4::new(key as u8), false);
-                    }
-                }
-            },
+            }
 
             _ => (),
         }

@@ -24,13 +24,13 @@ impl Executor {
 
         let result = self
             .runner
-            .update_with_breakpoints(dt, Some(&self.breakpoints))?;
+            .update_with_breakpoints(dt, Some(&self.breakpoints));
 
-        if let Chip8RunnerResult::HitBreakpoint = result {
+        if matches!(result, Err(_) | Ok(Chip8RunnerResult::HitBreakpoint)) {
             self.is_running = false;
         }
 
-        Ok(result)
+        result
     }
 
     pub fn execute(&mut self, command: Command) -> Result<CommandResult, CommandError> {
@@ -63,7 +63,7 @@ impl Executor {
         Ok(CommandResult::Ok)
     }
 
-    pub fn get_is_running(&self) -> bool {
+    pub fn is_running(&self) -> bool {
         self.is_running
     }
 
@@ -97,6 +97,10 @@ impl Executor {
 
     pub fn get_keypad(&self) -> &[bool; 16] {
         &self.runner.chip8_ref().keypad
+    }
+
+    pub fn runner_mut(&mut self) -> &mut Chip8Runner {
+        &mut self.runner
     }
 
     fn handle_breakpoint(

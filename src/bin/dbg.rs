@@ -1,0 +1,289 @@
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
+use anyhow::Context;
+use clap::Parser;
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use ratatui::{
+    DefaultTerminal, Frame,
+    buffer::Buffer,
+    layout::{Constraint, Layout, Rect},
+    text::Line,
+    widgets::{Block, Paragraph, Widget},
+};
+
+use chip8_rust::{
+    chip8::{Chip8, Chip8Runner, DISPLAY_X, DISPLAY_Y},
+    debugger::{Cli, Executor},
+    u4,
+};
+
+const KEY_MAP: [KeyCode; 16] = [
+    KeyCode::Char('x'), // 0x0
+    KeyCode::Char('1'), // 0x1
+    KeyCode::Char('2'), // 0x2
+    KeyCode::Char('3'), // 0x3
+    KeyCode::Char('q'), // 0x4
+    KeyCode::Char('w'), // 0x5
+    KeyCode::Char('e'), // 0x6
+    KeyCode::Char('a'), // 0x7
+    KeyCode::Char('s'), // 0x8
+    KeyCode::Char('d'), // 0x9
+    KeyCode::Char('z'), // 0xA
+    KeyCode::Char('c'), // 0xB
+    KeyCode::Char('4'), // 0xC
+    KeyCode::Char('r'), // 0xD
+    KeyCode::Char('f'), // 0xE
+    KeyCode::Char('v'), // 0xF
+];
+
+struct App {
+    executor: Executor,
+    input: String,
+    output: String,
+    should_quit: bool,
+    last_tick: Instant,
+}
+
+impl App {
+    fn new(rom: &[u8]) -> anyhow::Result<Self> {
+        let mut chip8 = Chip8::default();
+        chip8
+            .load(rom)
+            .context("Failed to load ROM into CHIP-8 memory")?;
+
+        Ok(Self {
+            executor: Executor::new(Chip8Runner::new(chip8)),
+            input: String::new(),
+            output: String::new(),
+            should_quit: false,
+            last_tick: Instant::now(),
+        })
+    }
+
+    fn run(&mut self, terminal: &mut DefaultTerminal) -> anyhow::Result<()> {
+        while !self.should_quit {
+            let dt = self.last_tick.elapsed().as_secs_f32();
+            self.last_tick = Instant::now();
+
+            if let Err(e) = self.executor.poll(dt) {
+                self.output = e.to_string();
+            }
+
+            terminal.draw(|frame| self.draw(frame))?;
+
+            if event::poll(Duration::from_millis(16))? {
+                if let Event::Key(key) = event::read()? {
+                    self.handle_key_event(key);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn draw(&self, frame: &mut Frame) {
+        frame.render_widget(self, frame.area());
+    }
+
+    fn handle_key_event(&mut self, key: KeyEvent) {
+        if self.executor.is_running() {
+            match key.code {
+                KeyCode::Esc => {
+                    self.executor.execute_pause();
+                    self.output = "Paused.".to_string();
+                }
+                _ => {
+                    if let Some(idx) = KEY_MAP.iter().position(|&k| k == key.code) {
+                        self.executor
+                            .runner_mut()
+                            .set_key(u4::new(idx as u8), matches!(key.kind, KeyEventKind::Press));
+                    }
+                }
+            }
+        } else if key.kind == KeyEventKind::Press {
+            match key.code {
+                KeyCode::Esc => {
+                    self.should_quit = true;
+                }
+                KeyCode::Enter => {
+                    self.execute_command();
+                }
+                KeyCode::Char(c) => {
+                    self.input.push(c);
+                }
+                KeyCode::Backspace => {
+                    self.input.pop();
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn execute_command(&mut self) {
+        let args = self.input.trim().split_whitespace();
+
+        match Cli::try_parse_from(args) {
+            Ok(cli) => match self.executor.execute(cli.command) {
+                Ok(result) => match result {
+                    chip8_rust::debugger::CommandResult::Ok => {
+                        self.output = "OK".to_string();
+                    }
+                    chip8_rust::debugger::CommandResult::Quit => {
+                        self.should_quit = true;
+                    }
+                    chip8_rust::debugger::CommandResult::BreakpointList { breakpoints } => {
+                        self.output = format!("Breakpoints: {:?}", breakpoints);
+                    }
+                },
+                Err(e) => {
+                    self.output = e.to_string();
+                }
+            },
+            Err(e) => {
+                self.output = e.to_string();
+            }
+        }
+
+        self.input.clear();
+    }
+}
+
+impl Widget for &App {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let [top, output, input] = Layout::vertical([
+            Constraint::Min(DISPLAY_Y as u16 + 2),
+            Constraint::Min(1 + 2),
+            Constraint::Length(1 + 2),
+        ])
+        .areas(area);
+
+        let [display, info] = Layout::horizontal([
+            Constraint::Min(DISPLAY_X as u16 + 2),
+            Constraint::Length(15 + 2),
+        ])
+        .areas(top);
+
+        let [registers, stack] =
+            Layout::vertical([Constraint::Length(11 + 2), Constraint::Min(1 + 2)]).areas(info);
+
+        self.render_display(display, buf);
+        self.render_registers(registers, buf);
+        self.render_stack(stack, buf);
+        self.render_output(output, buf);
+        self.render_input(input, buf);
+    }
+}
+
+impl App {
+    fn render_display(&self, area: Rect, buf: &mut Buffer) {
+        let text: Vec<Line> = self
+            .executor
+            .get_display()
+            .iter()
+            .map(|row| {
+                Line::from(
+                    row.iter()
+                        .map(|pixel| if *pixel { '█' } else { ' ' })
+                        .collect::<String>(),
+                )
+            })
+            .collect();
+
+        Paragraph::new(text)
+            .block(Block::bordered().title(" Display "))
+            .render(area, buf);
+    }
+
+    fn render_registers(&self, area: Rect, buf: &mut Buffer) {
+        let mut lines = Vec::new();
+
+        lines.push(Line::from(format!(
+            "PC: {:03X}  I: {:03X}",
+            self.executor.get_pc(),
+            self.executor.get_i()
+        )));
+        lines.push(Line::from(format!(
+            "DT: {:02X}   ST: {:02X}",
+            self.executor.get_delay_timer(),
+            self.executor.get_sound_timer()
+        )));
+        lines.push(Line::from(""));
+
+        let v = self.executor.get_v();
+        for idx in 0..8 {
+            lines.push(Line::from(format!(
+                "V{:X}: {:02X}   V{:X}: {:02X}",
+                idx,
+                v[idx],
+                idx + 8,
+                v[idx + 8]
+            )));
+        }
+
+        Paragraph::new(lines)
+            .block(Block::bordered().title(" Registers "))
+            .render(area, buf);
+    }
+
+    fn render_stack(&self, area: Rect, buf: &mut Buffer) {
+        let max_lines = area.height as usize - 2;
+
+        let mut lines: Vec<Line> = self
+            .executor
+            .get_stack()
+            .iter()
+            .enumerate()
+            .map(|(i, val)| Line::from(format!("{:02}: {:03X}", i, val)))
+            .collect();
+
+        if lines.is_empty() {
+            lines.push(Line::from("Empty"));
+        }
+
+        if lines.len() > max_lines {
+            // Display only the last `max_lines - 1` items with "..." at the top
+            lines = std::iter::once(Line::from("..."))
+                .chain(lines.into_iter().rev().take(max_lines - 1).rev())
+                .collect();
+        }
+
+        Paragraph::new(lines)
+            .block(Block::bordered().title(" Stack "))
+            .render(area, buf);
+    }
+
+    fn render_output(&self, area: Rect, buf: &mut Buffer) {
+        Paragraph::new(self.output.as_str())
+            .block(Block::bordered().title(" Output "))
+            .render(area, buf);
+    }
+
+    fn render_input(&self, area: Rect, buf: &mut Buffer) {
+        Paragraph::new(self.input.as_str())
+            .block(Block::bordered().title(" Command "))
+            .render(area, buf);
+    }
+}
+
+/// TUI debugger for CHIP-8
+#[derive(Parser)]
+struct Args {
+    /// Path to the ROM file to load
+    rom_path: PathBuf,
+}
+
+fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+
+    let rom = std::fs::read(&args.rom_path).context("Failed to read ROM file")?;
+    let mut app = App::new(&rom).context("Failed to initialize application")?;
+
+    let mut terminal = ratatui::init();
+    let app_result = app.run(&mut terminal);
+    ratatui::restore();
+
+    app_result
+}

@@ -27,6 +27,7 @@ pub enum Command {
         action: BreakpointAction,
     },
 
+    #[command(visible_alias = "m")]
     Set {
         #[arg(value_parser = parse_set_target)]
         target: SetTarget,
