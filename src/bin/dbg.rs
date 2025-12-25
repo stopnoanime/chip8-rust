@@ -9,9 +9,9 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
-    layout::{Constraint, Layout, Rect},
-    style::{Color, Style},
-    text::{Line, Span},
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Color, Style, Stylize},
+    text::{Line, Span, Text},
     widgets::{Block, Paragraph, Widget},
 };
 
@@ -161,7 +161,7 @@ impl Widget for &App {
         .areas(area);
 
         let [display, output, input] = Layout::vertical([
-            Constraint::Min(DISPLAY_Y as u16 + 2),
+            Constraint::Length(DISPLAY_Y as u16 + 2),
             Constraint::Min(1 + 2),
             Constraint::Length(1 + 2),
         ])
@@ -192,15 +192,16 @@ impl App {
             .get_display()
             .iter()
             .map(|row| {
-                Line::from(
-                    row.iter()
-                        .map(|pixel| if *pixel { '█' } else { ' ' })
-                        .collect::<String>(),
-                )
+                row.iter()
+                    .map(|pixel| {
+                        Span::styled(if *pixel { "█" } else { " " }, Style::default().green())
+                    })
+                    .collect()
             })
             .collect();
 
         Paragraph::new(text)
+            .alignment(Alignment::Center)
             .block(Block::bordered().title(" Display "))
             .render(area, buf);
     }
@@ -259,6 +260,7 @@ impl App {
         }
 
         Paragraph::new(lines)
+            .alignment(Alignment::Center)
             .block(Block::bordered().title(" Stack "))
             .render(area, buf);
     }
@@ -279,12 +281,11 @@ impl App {
         let (text, color) = if self.executor.is_running() {
             ("RUNNING", Color::Green)
         } else {
-            ("PAUSED", Color::Red)
+            ("PAUSED", Color::Yellow)
         };
 
-        let line = Line::from(text).style(Style::default().fg(color));
-
-        Paragraph::new(line)
+        Paragraph::new(Text::styled(text, Style::default().fg(color)))
+            .alignment(Alignment::Center)
             .block(Block::bordered().title(" State "))
             .render(area, buf);
     }
@@ -315,11 +316,13 @@ impl App {
                         )
                     })
                     .flat_map(|s| [s, Span::raw(" ")])
+                    .take(row.len() * 2 - 1)
                     .collect()
             })
             .collect::<Vec<Line>>();
 
         Paragraph::new(lines)
+            .alignment(Alignment::Center)
             .block(Block::bordered().title(" Keypad "))
             .render(area, buf);
     }
