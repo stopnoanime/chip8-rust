@@ -16,7 +16,7 @@ use ratatui::{
 };
 
 use chip8_rust::{
-    chip8::{Chip8, Chip8Runner, DISPLAY_X, DISPLAY_Y},
+    chip8::{Chip8, Chip8Runner, Chip8RunnerResult, DISPLAY_X, DISPLAY_Y},
     debugger::{Cli, Executor},
     u4,
 };
@@ -69,8 +69,14 @@ impl App {
             let dt = self.last_tick.elapsed().as_secs_f32();
             self.last_tick = Instant::now();
 
-            if let Err(e) = self.executor.poll(dt) {
-                self.output = e.to_string();
+            match self.executor.poll(dt) {
+                Ok(Chip8RunnerResult::HitBreakpoint) => {
+                    self.output = "Hit breakpoint".to_string();
+                }
+                Err(e) => {
+                    self.output = e.to_string();
+                }
+                _ => {}
             }
 
             terminal.draw(|frame| self.draw(frame))?;
@@ -93,8 +99,8 @@ impl App {
         if self.executor.is_running() {
             match key.code {
                 KeyCode::Esc => {
-                    self.executor.execute_pause();
-                    self.output = "Paused.".to_string();
+                    self.executor.pause();
+                    self.output = "Paused".to_string();
                 }
                 _ => {
                     if let Some(idx) = KEY_MAP.iter().position(|&k| k == key.code) {
@@ -135,8 +141,37 @@ impl App {
                     chip8_rust::debugger::CommandResult::Quit => {
                         self.should_quit = true;
                     }
-                    chip8_rust::debugger::CommandResult::BreakpointList { breakpoints } => {
+                    chip8_rust::debugger::CommandResult::Breakpoints(breakpoints) => {
                         self.output = format!("Breakpoints: {:?}", breakpoints);
+                    }
+                    chip8_rust::debugger::CommandResult::MemDump { data, offset } => {
+                        let mut output = String::new();
+
+                        for (i, byte) in data.iter().enumerate() {
+                            if i % 16 == 0 {
+                                output.push_str(&format!("\n{:03X}: ", offset + i as u16));
+                            }
+                            output.push_str(&format!("{:02X} ", byte));
+                        }
+
+                        self.output = output;
+                    }
+                    chip8_rust::debugger::CommandResult::Disasm {
+                        instructions,
+                        offset,
+                    } => {
+                        let mut output = String::new();
+
+                        for (i, ins) in instructions.iter().enumerate() {
+                            output.push_str(&format!(
+                                "{:03X}: {:04X} - {:?}\n",
+                                offset + i as u16 * 2,
+                                ins.0,
+                                ins.1
+                            ));
+                        }
+
+                        self.output = output;
                     }
                 },
                 Err(e) => {

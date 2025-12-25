@@ -1,5 +1,5 @@
-use super::commands::{BreakpointAction, Command, CommandError, CommandResult, SetTarget};
-use crate::chip8::{Chip8Error, Chip8Runner, Chip8RunnerResult, Display};
+use super::commands::{BreakpointAction, Command, CommandResult};
+use crate::chip8::{Chip8Error, Chip8Runner, Chip8RunnerResult, Display, MEMORY_SIZE, Opcode};
 use std::collections::HashSet;
 
 pub struct Executor {
@@ -33,32 +33,39 @@ impl Executor {
         result
     }
 
-    pub fn execute(&mut self, command: Command) -> Result<CommandResult, CommandError> {
+    pub fn execute(&mut self, command: Command) -> Result<CommandResult, Chip8Error> {
         match command {
-            Command::Run => {
-                self.execute_run();
-                Ok(CommandResult::Ok)
+            Command::Run => self.run(),
+            Command::Pause => self.pause(),
+            Command::Step => return self.step(),
+            Command::Quit => return Ok(CommandResult::Quit),
+            Command::Breakpoint { action } => return Ok(self.handle_breakpoint(action)),
+            Command::Mem { args } => return Ok(self.handle_mem(args.offset, args.len)),
+            Command::Disasm { args } => return Ok(self.handle_disasm(args.offset, args.len)),
+            Command::SetV { idx, value } => self.runner.chip8_mut().v[idx] = value,
+            Command::SetI { value } => self.runner.chip8_mut().i = value,
+            Command::SetPc { value } => self.runner.chip8_mut().pc = value,
+            Command::SetKey { key, pressed } => self.runner.chip8_mut().keypad[key] = pressed,
+            Command::SetDt { value } => self.runner.chip8_mut().delay_timer = value,
+            Command::SetSt { value } => self.runner.chip8_mut().sound_timer = value,
+            Command::Push { value } => self.runner.chip8_mut().stack.push(value),
+            Command::Pop => {
+                self.runner.chip8_mut().stack.pop();
             }
-            Command::Pause => {
-                self.execute_pause();
-                Ok(CommandResult::Ok)
-            }
-            Command::Step => self.execute_step(),
-            Command::Breakpoint { action } => self.handle_breakpoint(action),
-            Command::Set { target, value } => self.handle_set(target, value),
-            Command::Quit => Ok(CommandResult::Quit),
-        }
+        };
+
+        Ok(CommandResult::Ok)
     }
 
-    pub fn execute_run(&mut self) {
+    pub fn run(&mut self) {
         self.is_running = true;
     }
 
-    pub fn execute_pause(&mut self) {
+    pub fn pause(&mut self) {
         self.is_running = false;
     }
 
-    pub fn execute_step(&mut self) -> Result<CommandResult, CommandError> {
+    pub fn step(&mut self) -> Result<CommandResult, Chip8Error> {
         self.runner.chip8_mut().cpu_cycle()?;
         Ok(CommandResult::Ok)
     }
@@ -103,10 +110,7 @@ impl Executor {
         &mut self.runner
     }
 
-    fn handle_breakpoint(
-        &mut self,
-        action: BreakpointAction,
-    ) -> Result<CommandResult, CommandError> {
+    fn handle_breakpoint(&mut self, action: BreakpointAction) -> CommandResult {
         match action {
             BreakpointAction::Set { addr } => {
                 self.breakpoints.insert(addr);
@@ -118,34 +122,45 @@ impl Executor {
                 self.breakpoints.clear();
             }
             BreakpointAction::List => {
-                return Ok(CommandResult::BreakpointList {
-                    breakpoints: {
-                        let mut bps: Vec<u16> = self.breakpoints.iter().cloned().collect();
-                        bps.sort();
-                        bps
-                    },
+                return CommandResult::Breakpoints({
+                    let mut bps: Vec<u16> = self.breakpoints.iter().cloned().collect();
+                    bps.sort();
+                    bps
                 });
             }
         };
 
-        Ok(CommandResult::Ok)
+        CommandResult::Ok
     }
 
-    fn handle_set(&mut self, target: SetTarget, value: u16) -> Result<CommandResult, CommandError> {
-        let chip8 = self.runner.chip8_mut();
+    fn handle_mem(&self, offset: u16, len: u16) -> CommandResult {
+        let end = MEMORY_SIZE.min(offset as usize + len as usize);
+        let data = self.runner.chip8_ref().memory[offset as usize..end].to_vec();
 
-        match target {
-            SetTarget::V(reg) => {
-                chip8.v[reg] = value as u8;
-            }
-            SetTarget::I => {
-                chip8.i = value;
-            }
-            SetTarget::Pc => {
-                chip8.pc = value;
-            }
+        CommandResult::MemDump { data, offset }
+    }
+
+    fn handle_disasm(&self, offset: u16, len: u16) -> CommandResult {
+        let end = MEMORY_SIZE.min(offset as usize + len as usize);
+        let mut instructions = Vec::new();
+        let mut pc = offset as usize;
+
+        while pc < end {
+            let value = u16::from_be_bytes(
+                self.runner.chip8_ref().memory[pc..pc + 2]
+                    .try_into()
+                    .unwrap(),
+            );
+
+            let opcode = Opcode::decode(value);
+
+            instructions.push((value, opcode));
+            pc = pc + 2;
         }
 
-        Ok(CommandResult::Ok)
+        CommandResult::Disasm {
+            instructions,
+            offset,
+        }
     }
 }

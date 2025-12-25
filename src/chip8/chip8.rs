@@ -6,7 +6,7 @@ use crate::u4;
 
 // The constants are specified by the CHIP-8 specification
 const ROM_START_ADDRESS: usize = 0x200;
-const MEMORY_SIZE: usize = 4096;
+pub(crate) const MEMORY_SIZE: usize = 4096;
 
 /// CHIP-8 virtual machine state
 pub struct Chip8 {

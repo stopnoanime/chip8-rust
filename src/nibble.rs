@@ -1,7 +1,7 @@
 use std::ops::{Index, IndexMut};
 
 /// A 4-bit unsigned integer (nibble).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[allow(non_camel_case_types)]
 pub struct u4(u8);
 

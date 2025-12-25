@@ -1,6 +1,7 @@
-use clap::{Parser, Subcommand};
-use clap_num::maybe_hex;
+use clap::{Args, Parser, Subcommand};
+use clap_num::{maybe_hex, maybe_hex_range};
 
+use crate::chip8::Opcode;
 use crate::u4;
 
 #[derive(Parser)]
@@ -21,6 +22,9 @@ pub enum Command {
     #[command(visible_alias = "s")]
     Step,
 
+    #[command(visible_alias = "q")]
+    Quit,
+
     #[command(visible_alias = "b")]
     Breakpoint {
         #[command(subcommand)]
@@ -28,57 +32,94 @@ pub enum Command {
     },
 
     #[command(visible_alias = "m")]
-    Set {
-        #[arg(value_parser = parse_set_target)]
-        target: SetTarget,
-        #[arg(value_parser = maybe_hex::<u16>)]
+    Mem {
+        #[command(flatten)]
+        args: MemArgs,
+    },
+
+    #[command(visible_alias = "d")]
+    Disasm {
+        #[command(flatten)]
+        args: MemArgs,
+    },
+
+    #[command(visible_alias = "v")]
+    SetV {
+        #[arg(value_parser = u4_parse)]
+        idx: u4,
+
+        #[arg(value_parser = maybe_hex::<u8>)]
+        value: u8,
+    },
+
+    #[command(visible_alias = "i")]
+    SetI {
+        #[arg(value_parser = u12_parse)]
         value: u16,
     },
 
-    // #[command(visible_alias = "m")]
-    // Mem {
-    //     #[arg(default_value = "0", value_parser = maybe_hex::<u16>)]
-    //     start: u16,
-    //     #[arg(default_value = "16", value_parser = maybe_hex::<u16>)]
-    //     len: u16,
-    // },
+    #[command(visible_alias = "pc")]
+    SetPc {
+        #[arg(value_parser = u12_parse)]
+        value: u16,
+    },
 
-    // #[command(visible_alias = "d")]
-    // Disasm {
-    //     #[arg(default_value = "0", value_parser = maybe_hex::<u16>)]
-    //     start: u16,
-    //     #[arg(default_value = "16", value_parser = maybe_hex::<u16>)]
-    //     len: u16,
-    // },
-    #[command(visible_alias = "q")]
-    Quit,
+    #[command(visible_alias = "k")]
+    SetKey {
+        #[arg(value_parser = u4_parse)]
+        key: u4,
+
+        #[arg(action = clap::ArgAction::Set)]
+        pressed: bool,
+    },
+
+    #[command(visible_alias = "dt")]
+    SetDt {
+        #[arg(value_parser = maybe_hex::<u8>)]
+        value: u8,
+    },
+
+    #[command(visible_alias = "st")]
+    SetSt {
+        #[arg(value_parser = maybe_hex::<u8>)]
+        value: u8,
+    },
+
+    #[command(visible_alias = "pu")]
+    Push {
+        #[arg(value_parser = u12_parse)]
+        value: u16,
+    },
+
+    #[command(visible_alias = "po")]
+    Pop,
 }
 
 pub enum CommandResult {
     Ok,
-    BreakpointList { breakpoints: Vec<u16> },
+    Breakpoints(Vec<u16>),
+    MemDump {
+        data: Vec<u8>,
+        offset: u16,
+    },
+    Disasm {
+        instructions: Vec<(u16, Opcode)>,
+        offset: u16,
+    },
     Quit,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum CommandError {
-    #[error("Error while executing cpu instruction: {0}")]
-    Chip8Error(#[from] crate::chip8::Chip8Error),
-    #[error("Value out of range")]
-    ValueOutOfRange,
 }
 
 #[derive(Subcommand)]
 pub enum BreakpointAction {
     #[command(visible_alias = "s")]
     Set {
-        #[arg(value_parser = maybe_hex::<u16>)]
+        #[arg(value_parser = u12_parse)]
         addr: u16,
     },
 
     #[command(visible_alias = "c")]
     Clear {
-        #[arg(value_parser = maybe_hex::<u16>)]
+        #[arg(value_parser = u12_parse)]
         addr: u16,
     },
 
@@ -89,28 +130,19 @@ pub enum BreakpointAction {
     ClearAll,
 }
 
-#[derive(Clone)]
-pub enum SetTarget {
-    V(u4),
-    I,
-    Pc,
+#[derive(Args)]
+pub struct MemArgs {
+    #[arg(value_parser = u12_parse)]
+    pub offset: u16,
+
+    #[arg(default_value = "16", value_parser = u12_parse)]
+    pub len: u16,
 }
 
-fn parse_set_target(s: &str) -> Result<SetTarget, String> {
-    let lower = s.to_lowercase();
+fn u12_parse(s: &str) -> Result<u16, String> {
+    maybe_hex_range(s, 0, 0xFFF)
+}
 
-    match lower.as_str() {
-        "index" | "i" => Ok(SetTarget::I),
-        "pc" => Ok(SetTarget::Pc),
-
-        _ if lower.starts_with('v') => {
-            let hex_str = &lower[1..];
-            match u8::from_str_radix(hex_str, 16) {
-                Ok(val) if val < 16 => Ok(SetTarget::V(u4::new(val))),
-                _ => Err(format!("Invalid register: '{}'", s)),
-            }
-        }
-
-        _ => Err(format!("Unknown set target: '{}'", s)),
-    }
+fn u4_parse(s: &str) -> Result<u4, String> {
+    maybe_hex_range(s, 0, 0xF).map(|v| u4::new(v))
 }

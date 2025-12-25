@@ -3,6 +3,7 @@ use crate::u4;
 /// CHIP-8 instruction opcodes.
 ///
 /// The fields (x, y, n, nn, nnn) correspond to the operands encoded in the opcode.
+#[derive(Debug)]
 pub enum Opcode {
     /// 1nnn - Jump to location nnn.
     Jump { nnn: u16 },
@@ -73,6 +74,7 @@ pub enum Opcode {
 }
 
 /// ALU operations for the 8xyN instruction.
+#[derive(Debug)]
 pub enum OpcodeALU {
     /// 8xy0 - Vx = Vy
     Set,
