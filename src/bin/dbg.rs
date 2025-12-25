@@ -10,7 +10,8 @@ use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
-    text::Line,
+    style::{Color, Style},
+    text::{Line, Span},
     widgets::{Block, Paragraph, Widget},
 };
 
@@ -153,24 +154,31 @@ impl App {
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let [top, output, input] = Layout::vertical([
+        let [left, right] = Layout::horizontal([
+            Constraint::Min(DISPLAY_X as u16 + 2),
+            Constraint::Length(15 + 2),
+        ])
+        .areas(area);
+
+        let [display, output, input] = Layout::vertical([
             Constraint::Min(DISPLAY_Y as u16 + 2),
             Constraint::Min(1 + 2),
             Constraint::Length(1 + 2),
         ])
-        .areas(area);
+        .areas(left);
 
-        let [display, info] = Layout::horizontal([
-            Constraint::Min(DISPLAY_X as u16 + 2),
-            Constraint::Length(15 + 2),
+        let [state, registers, keypad, stack] = Layout::vertical([
+            Constraint::Length(1 + 2),
+            Constraint::Length(11 + 2),
+            Constraint::Length(4 + 2),
+            Constraint::Min(1 + 2),
         ])
-        .areas(top);
-
-        let [registers, stack] =
-            Layout::vertical([Constraint::Length(11 + 2), Constraint::Min(1 + 2)]).areas(info);
+        .areas(right);
 
         self.render_display(display, buf);
+        self.render_state(state, buf);
         self.render_registers(registers, buf);
+        self.render_keypad(keypad, buf);
         self.render_stack(stack, buf);
         self.render_output(output, buf);
         self.render_input(input, buf);
@@ -264,6 +272,55 @@ impl App {
     fn render_input(&self, area: Rect, buf: &mut Buffer) {
         Paragraph::new(self.input.as_str())
             .block(Block::bordered().title(" Command "))
+            .render(area, buf);
+    }
+
+    fn render_state(&self, area: Rect, buf: &mut Buffer) {
+        let (text, color) = if self.executor.is_running() {
+            ("RUNNING", Color::Green)
+        } else {
+            ("PAUSED", Color::Red)
+        };
+
+        let line = Line::from(text).style(Style::default().fg(color));
+
+        Paragraph::new(line)
+            .block(Block::bordered().title(" State "))
+            .render(area, buf);
+    }
+
+    fn render_keypad(&self, area: Rect, buf: &mut Buffer) {
+        let keypad = self.executor.get_keypad();
+        let layout = [
+            [0x1, 0x2, 0x3, 0xC],
+            [0x4, 0x5, 0x6, 0xD],
+            [0x7, 0x8, 0x9, 0xE],
+            [0xA, 0x0, 0xB, 0xF],
+        ];
+
+        let lines = layout
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|key| {
+                        let key_str = format!("{:X}", key);
+
+                        Span::styled(
+                            key_str,
+                            if keypad[*key] {
+                                Style::default().fg(Color::Black).bg(Color::White)
+                            } else {
+                                Style::default()
+                            },
+                        )
+                    })
+                    .flat_map(|s| [s, Span::raw(" ")])
+                    .collect()
+            })
+            .collect::<Vec<Line>>();
+
+        Paragraph::new(lines)
+            .block(Block::bordered().title(" Keypad "))
             .render(area, buf);
     }
 }
