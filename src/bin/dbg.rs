@@ -40,6 +40,10 @@ const KEY_MAP: [KeyCode; 16] = [
     KeyCode::Char('v'), // 0xF
 ];
 
+// Key release events are not fired in terminals on Linux.
+// To handle this, we implement a timeout after which we consider a key released.
+const KEY_RELEASE_TIMEOUT: Duration = Duration::from_millis(50);
+
 struct App {
     executor: Executor,
     input: String,
@@ -47,6 +51,7 @@ struct App {
     should_quit: bool,
     last_tick: Instant,
     last_command: Option<Command>,
+    key_press_times: [Option<Instant>; 16],
 }
 
 impl App {
@@ -63,6 +68,7 @@ impl App {
             should_quit: false,
             last_tick: Instant::now(),
             last_command: None,
+            key_press_times: [None; 16],
         })
     }
 
@@ -71,6 +77,7 @@ impl App {
             let dt = self.last_tick.elapsed().as_secs_f32();
             self.last_tick = Instant::now();
 
+            // Handles execution when debugger is in running mode
             match self.executor.poll(dt) {
                 Ok(Chip8RunnerResult::HitBreakpoint) => {
                     self.output = "Hit breakpoint".to_string();
@@ -83,10 +90,12 @@ impl App {
 
             terminal.draw(|frame| self.draw(frame))?;
 
-            if event::poll(Duration::from_millis(16))?
-                && let Event::Key(key) = event::read()?
-            {
-                self.handle_key_event(key);
+            self.check_key_timeout();
+
+            if event::poll(Duration::from_millis(16))? {
+                if let Event::Key(key) = event::read()? {
+                    self.handle_key_event(key);
+                }
             }
         }
 
@@ -95,6 +104,21 @@ impl App {
 
     fn draw(&self, frame: &mut Frame) {
         frame.render_widget(self, frame.area());
+    }
+
+    fn check_key_timeout(&mut self) {
+        let now = Instant::now();
+
+        for (idx, press_time) in self.key_press_times.iter_mut().enumerate() {
+            if let Some(time) = press_time
+                && now.duration_since(*time) > KEY_RELEASE_TIMEOUT
+            {
+                *press_time = None;
+                self.executor
+                    .runner_mut()
+                    .set_key(u4::new(idx as u8), false);
+            }
+        }
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
@@ -106,9 +130,8 @@ impl App {
                 }
                 _ => {
                     if let Some(idx) = KEY_MAP.iter().position(|&k| k == key.code) {
-                        self.executor
-                            .runner_mut()
-                            .set_key(u4::new(idx as u8), matches!(key.kind, KeyEventKind::Press));
+                        self.executor.runner_mut().set_key(u4::new(idx as u8), true);
+                        self.key_press_times[idx] = Some(Instant::now());
                     }
                 }
             }
