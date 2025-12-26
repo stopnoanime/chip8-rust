@@ -122,6 +122,12 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
+        // Handle Ctrl+C globally
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(event::KeyModifiers::CONTROL) {
+            self.should_quit = true;
+            return;
+        }
+
         if self.executor.is_running() {
             match key.code {
                 KeyCode::Esc => {
