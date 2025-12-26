@@ -189,36 +189,39 @@ impl App {
                     self.should_quit = true;
                 }
                 chip8_rust::debugger::CommandResult::Breakpoints(breakpoints) => {
-                    self.output = format!("Breakpoints: {:?}", breakpoints);
+                    self.output = if breakpoints.is_empty() {
+                        "No breakpoints set".to_string()
+                    } else {
+                        breakpoints
+                            .iter()
+                            .map(|b| format!("Breakpoint: {b:#05X}\n"))
+                            .collect()
+                    };
                 }
                 chip8_rust::debugger::CommandResult::MemDump { data, offset } => {
-                    let mut output = String::new();
-
-                    for (i, byte) in data.iter().enumerate() {
-                        if i % 16 == 0 {
-                            output.push_str(&format!("\n{:03X}: ", offset + i as u16));
-                        }
-                        output.push_str(&format!("{:02X} ", byte));
-                    }
-
-                    self.output = output;
+                    self.output = data
+                        .iter()
+                        .enumerate()
+                        .map(|(i, byte)| {
+                            if i % 16 == 0 {
+                                format!("\n{:03X}: {byte:02X} ", offset + i as u16)
+                            } else {
+                                format!("{byte:02X} ")
+                            }
+                        })
+                        .collect();
                 }
                 chip8_rust::debugger::CommandResult::Disasm {
                     instructions,
                     offset,
                 } => {
-                    let mut output = String::new();
-
-                    for (i, ins) in instructions.iter().enumerate() {
-                        output.push_str(&format!(
-                            "{:03X}: {:04X} - {:X?}\n",
-                            offset + i as u16 * 2,
-                            ins.0,
-                            ins.1
-                        ));
-                    }
-
-                    self.output = output;
+                    self.output = instructions
+                        .iter()
+                        .enumerate()
+                        .map(|(i, (ins, opcode))| {
+                            format!("{:03X}: {ins:04X} - {opcode:X?}\n", offset + i as u16 * 2)
+                        })
+                        .collect();
                 }
             },
             Err(e) => {

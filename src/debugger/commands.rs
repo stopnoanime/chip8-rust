@@ -135,7 +135,7 @@ pub struct MemArgs {
     #[arg(value_parser = u12_parse)]
     pub offset: u16,
 
-    #[arg(default_value = "16", value_parser = u12_parse)]
+    #[arg(default_value = "32", value_parser = u12_parse)]
     pub len: u16,
 }
 
