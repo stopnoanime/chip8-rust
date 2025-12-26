@@ -5,6 +5,9 @@ use crate::emu::Opcode;
 use crate::u4;
 
 /// CHIP-8 Debugger Command Line Interface
+/// 
+/// Throughout the program all values are displayed in hex.
+/// Input values can be decimal or hex (with 0x prefix).
 #[derive(Parser)]
 #[command(multicall = true, disable_help_flag = true, name = "")]
 pub struct Cli {

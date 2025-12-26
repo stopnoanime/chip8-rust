@@ -12,7 +12,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Paragraph, Widget},
+    widgets::{Block, Paragraph, Widget, Wrap},
 };
 
 use chip8_rust::{
@@ -364,6 +364,7 @@ impl App {
 
     fn render_output(&self, area: Rect, buf: &mut Buffer) {
         Paragraph::new(self.output.as_str())
+            .wrap(Wrap { trim: true })
             .block(Block::bordered().title(" Output "))
             .render(area, buf);
     }
