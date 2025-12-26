@@ -17,7 +17,7 @@ use ratatui::{
 
 use chip8_rust::{
     chip8::{Chip8, Chip8Runner, Chip8RunnerResult, DISPLAY_X, DISPLAY_Y},
-    debugger::{Cli, Executor},
+    debugger::{Cli, Command, Executor},
     u4,
 };
 
@@ -46,6 +46,7 @@ struct App {
     output: String,
     should_quit: bool,
     last_tick: Instant,
+    last_command: Option<Command>,
 }
 
 impl App {
@@ -61,6 +62,7 @@ impl App {
             output: String::new(),
             should_quit: false,
             last_tick: Instant::now(),
+            last_command: None,
         })
     }
 
@@ -81,10 +83,10 @@ impl App {
 
             terminal.draw(|frame| self.draw(frame))?;
 
-            if event::poll(Duration::from_millis(16))? {
-                if let Event::Key(key) = event::read()? {
-                    self.handle_key_event(key);
-                }
+            if event::poll(Duration::from_millis(16))?
+                && let Event::Key(key) = event::read()?
+            {
+                self.handle_key_event(key);
             }
         }
 
@@ -116,7 +118,7 @@ impl App {
                     self.should_quit = true;
                 }
                 KeyCode::Enter => {
-                    self.execute_command();
+                    self.handle_enter();
                 }
                 KeyCode::Char(c) => {
                     self.input.push(c);
@@ -129,61 +131,71 @@ impl App {
         }
     }
 
-    fn execute_command(&mut self) {
-        let args = self.input.trim().split_whitespace();
-
-        match Cli::try_parse_from(args) {
-            Ok(cli) => match self.executor.execute(cli.command) {
-                Ok(result) => match result {
-                    chip8_rust::debugger::CommandResult::Ok => {
-                        self.output = "OK".to_string();
-                    }
-                    chip8_rust::debugger::CommandResult::Quit => {
-                        self.should_quit = true;
-                    }
-                    chip8_rust::debugger::CommandResult::Breakpoints(breakpoints) => {
-                        self.output = format!("Breakpoints: {:?}", breakpoints);
-                    }
-                    chip8_rust::debugger::CommandResult::MemDump { data, offset } => {
-                        let mut output = String::new();
-
-                        for (i, byte) in data.iter().enumerate() {
-                            if i % 16 == 0 {
-                                output.push_str(&format!("\n{:03X}: ", offset + i as u16));
-                            }
-                            output.push_str(&format!("{:02X} ", byte));
-                        }
-
-                        self.output = output;
-                    }
-                    chip8_rust::debugger::CommandResult::Disasm {
-                        instructions,
-                        offset,
-                    } => {
-                        let mut output = String::new();
-
-                        for (i, ins) in instructions.iter().enumerate() {
-                            output.push_str(&format!(
-                                "{:03X}: {:04X} - {:?}\n",
-                                offset + i as u16 * 2,
-                                ins.0,
-                                ins.1
-                            ));
-                        }
-
-                        self.output = output;
-                    }
-                },
+    fn handle_enter(&mut self) {
+        if self.input.is_empty() && self.last_command.is_some() {
+            self.execute_command(self.last_command.clone().unwrap());
+        } else {
+            match Cli::try_parse_from(self.input.split_whitespace()) {
+                Ok(cli) => {
+                    self.last_command = Some(cli.command.clone());
+                    self.execute_command(cli.command);
+                }
                 Err(e) => {
                     self.output = e.to_string();
+                    self.last_command = None;
+                }
+            }
+        }
+
+        self.input.clear();
+    }
+
+    fn execute_command(&mut self, command: Command) {
+        match self.executor.execute(command) {
+            Ok(result) => match result {
+                chip8_rust::debugger::CommandResult::Ok => {
+                    self.output = "OK".to_string();
+                }
+                chip8_rust::debugger::CommandResult::Quit => {
+                    self.should_quit = true;
+                }
+                chip8_rust::debugger::CommandResult::Breakpoints(breakpoints) => {
+                    self.output = format!("Breakpoints: {:?}", breakpoints);
+                }
+                chip8_rust::debugger::CommandResult::MemDump { data, offset } => {
+                    let mut output = String::new();
+
+                    for (i, byte) in data.iter().enumerate() {
+                        if i % 16 == 0 {
+                            output.push_str(&format!("\n{:03X}: ", offset + i as u16));
+                        }
+                        output.push_str(&format!("{:02X} ", byte));
+                    }
+
+                    self.output = output;
+                }
+                chip8_rust::debugger::CommandResult::Disasm {
+                    instructions,
+                    offset,
+                } => {
+                    let mut output = String::new();
+
+                    for (i, ins) in instructions.iter().enumerate() {
+                        output.push_str(&format!(
+                            "{:03X}: {:04X} - {:?}\n",
+                            offset + i as u16 * 2,
+                            ins.0,
+                            ins.1
+                        ));
+                    }
+
+                    self.output = output;
                 }
             },
             Err(e) => {
                 self.output = e.to_string();
             }
         }
-
-        self.input.clear();
     }
 }
 

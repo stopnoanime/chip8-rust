@@ -56,11 +56,11 @@ impl Chip8Runner {
 
             let cpu_result = self.chip8.cpu_cycle()?;
 
-            if let Some(breakpoints) = &breakpoints {
-                if breakpoints.contains(&self.chip8.pc) {
-                    self.cpu_dt_accumulator = 0.0;
-                    return Ok(Chip8RunnerResult::HitBreakpoint);
-                }
+            if let Some(breakpoints) = &breakpoints
+                && breakpoints.contains(&self.chip8.pc)
+            {
+                self.cpu_dt_accumulator = 0.0;
+                return Ok(Chip8RunnerResult::HitBreakpoint);
             }
 
             match cpu_result {

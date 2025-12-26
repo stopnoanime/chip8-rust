@@ -11,7 +11,7 @@ pub struct Cli {
     pub command: Command,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum Command {
     #[command(visible_alias = "r")]
     Run,
@@ -109,7 +109,7 @@ pub enum CommandResult {
     Quit,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum BreakpointAction {
     #[command(visible_alias = "s")]
     Set {
@@ -130,7 +130,7 @@ pub enum BreakpointAction {
     ClearAll,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct MemArgs {
     #[arg(value_parser = u12_parse)]
     pub offset: u16,
@@ -144,5 +144,5 @@ fn u12_parse(s: &str) -> Result<u16, String> {
 }
 
 fn u4_parse(s: &str) -> Result<u4, String> {
-    maybe_hex_range(s, 0, 0xF).map(|v| u4::new(v))
+    maybe_hex_range(s, 0, 0xF).map(u4::new)
 }

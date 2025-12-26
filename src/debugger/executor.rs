@@ -155,7 +155,7 @@ impl Executor {
             let opcode = Opcode::decode(value);
 
             instructions.push((value, opcode));
-            pc = pc + 2;
+            pc += 2;
         }
 
         CommandResult::Disasm {
