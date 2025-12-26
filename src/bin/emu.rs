@@ -13,7 +13,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use chip8_rust::chip8::{Chip8, Chip8Runner, DISPLAY_X, DISPLAY_Y, Display};
+use chip8_rust::emu::{Chip8, Chip8Runner, DISPLAY_X, DISPLAY_Y, Display};
 use chip8_rust::u4;
 
 /// The rate at which pixels fade out (phosphor decay).

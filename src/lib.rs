@@ -1,5 +1,5 @@
-pub mod chip8;
 pub mod debugger;
-mod nibble;
+pub mod emu;
 
+mod nibble;
 pub use nibble::u4;

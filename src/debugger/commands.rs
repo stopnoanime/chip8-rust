@@ -1,7 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 use clap_num::{maybe_hex, maybe_hex_range};
 
-use crate::chip8::Opcode;
+use crate::emu::Opcode;
 use crate::u4;
 
 #[derive(Parser)]

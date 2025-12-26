@@ -16,8 +16,8 @@ use ratatui::{
 };
 
 use chip8_rust::{
-    chip8::{Chip8, Chip8Runner, Chip8RunnerResult, DISPLAY_X, DISPLAY_Y},
     debugger::{Cli, Command, Executor},
+    emu::{Chip8, Chip8Runner, Chip8RunnerResult, DISPLAY_X, DISPLAY_Y},
     u4,
 };
 

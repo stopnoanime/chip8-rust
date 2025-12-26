@@ -1,5 +1,5 @@
 use super::commands::{BreakpointAction, Command, CommandResult};
-use crate::chip8::{Chip8Error, Chip8Runner, Chip8RunnerResult, Display, MEMORY_SIZE, Opcode};
+use crate::emu::{Chip8Error, Chip8Runner, Chip8RunnerResult, Display, MEMORY_SIZE, Opcode};
 use std::collections::HashSet;
 
 pub struct Executor {
