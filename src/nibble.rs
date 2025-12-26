@@ -1,7 +1,8 @@
 use std::ops::{Index, IndexMut};
+use std::fmt;
 
 /// A 4-bit unsigned integer (nibble).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 #[allow(non_camel_case_types)]
 pub struct u4(u8);
 
@@ -32,5 +33,17 @@ impl<T> Index<u4> for [T; 16] {
 impl<T> IndexMut<u4> for [T; 16] {
     fn index_mut(&mut self, index: u4) -> &mut Self::Output {
         &mut self[index.0 as usize]
+    }
+}
+
+impl fmt::UpperHex for u4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::UpperHex::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Debug for u4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::UpperHex::fmt(&self.0, f)
     }
 }

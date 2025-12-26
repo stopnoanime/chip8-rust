@@ -211,7 +211,7 @@ impl App {
 
                     for (i, ins) in instructions.iter().enumerate() {
                         output.push_str(&format!(
-                            "{:03X}: {:04X} - {:?}\n",
+                            "{:03X}: {:04X} - {:X?}\n",
                             offset + i as u16 * 2,
                             ins.0,
                             ins.1
