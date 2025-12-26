@@ -10,7 +10,7 @@ use ratatui::{
     DefaultTerminal, Frame,
     buffer::Buffer,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{Block, Paragraph, Widget},
 };
@@ -224,6 +224,24 @@ impl App {
 
 impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        // Check if we have enough space
+        const MIN_WIDTH: u16 = DISPLAY_X as u16 + 2 + 15 + 2;
+        const MIN_HEIGHT: u16 = DISPLAY_Y as u16 + 2 + 1 + 2 + 1 + 2;
+        if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
+            let center = area.centered(Constraint::Length(45), Constraint::Length(3));
+
+            Paragraph::new(format!(
+                "Terminal is too small ({}x{} min)",
+                MIN_WIDTH, MIN_HEIGHT
+            ))
+            .style(Style::default().fg(Color::Red))
+            .alignment(Alignment::Center)
+            .block(Block::bordered())
+            .render(center, buf);
+
+            return;
+        }
+
         let [left, right] = Layout::horizontal([
             Constraint::Min(DISPLAY_X as u16 + 2),
             Constraint::Length(15 + 2),
