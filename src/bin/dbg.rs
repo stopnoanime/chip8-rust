@@ -47,6 +47,7 @@ const KEY_MAP: [KeyCode; 16] = [
 // To handle this, we implement a timeout after which we consider a key released.
 const KEY_RELEASE_TIMEOUT: Duration = Duration::from_millis(50);
 
+/// A widget for displaying output messages with scrolling support.
 struct OutputBox {
     content: String,
     is_error: bool,
@@ -71,10 +72,12 @@ impl OutputBox {
         self.set(content.to_string(), is_error);
     }
 
+    /// Scroll up.
     fn up(&mut self) {
         self.scroll_state.prev();
     }
 
+    /// Scroll down.
     fn down(&mut self) {
         self.scroll_state.next();
     }
@@ -132,6 +135,7 @@ impl App {
         })
     }
 
+    /// Run the application loop.
     fn run(&mut self, terminal: &mut DefaultTerminal) -> anyhow::Result<()> {
         while !self.should_quit {
             let dt = self.last_tick.elapsed().as_secs_f32();
@@ -153,6 +157,7 @@ impl App {
             if event::poll(Duration::from_millis(16))?
                 && let Event::Key(key) = event::read()?
             {
+                // We got a key event
                 self.handle_key_event(key);
             }
         }
@@ -164,6 +169,9 @@ impl App {
         frame.render_widget(self, frame.area());
     }
 
+    /// Checks for key release timeouts and updates keypad state accordingly.
+    ///
+    /// This is necessary because terminals do not send key release events.
     fn check_key_timeout(&mut self) {
         let now = Instant::now();
 
@@ -186,6 +194,9 @@ impl App {
             return;
         }
 
+        // Handles keyboard input based on the current state
+        // - Running: Keys are mapped to the CHIP-8 keypad. Esc pauses.
+        // - Paused: Keys control the debugger UI (scrolling, typing commands).
         if self.executor.is_running() {
             match key.code {
                 KeyCode::Esc => {
@@ -482,8 +493,8 @@ impl App {
                             },
                         )
                     })
-                    .flat_map(|s| [s, Span::raw(" ")])
-                    .take(row.len() * 2 - 1)
+                    .flat_map(|s| [s, Span::raw(" ")]) // Add space between keys
+                    .take(row.len() * 2 - 1) // And remove the last space
                     .collect()
             })
             .collect::<Vec<Line>>();

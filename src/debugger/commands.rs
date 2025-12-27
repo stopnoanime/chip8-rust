@@ -120,14 +120,18 @@ pub enum Command {
     Pop,
 }
 
+/// Result of a debugger command execution
 pub enum CommandResult {
+    /// Command executed successfully
     Ok,
     Breakpoints(Vec<u12>),
     MemDump {
         data: Vec<u8>,
+        /// The starting offset
         offset: u12,
     },
     Disasm {
+        /// List of instructions (value, decoded opcode)
         instructions: Vec<(u16, Opcode)>,
         offset: u12,
     },

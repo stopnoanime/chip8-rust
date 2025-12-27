@@ -5,6 +5,7 @@ use crate::{
 };
 use std::collections::HashSet;
 
+/// Executes debugger commands and manages the CHIP-8 runner state.
 pub struct Executor {
     is_running: bool,
     runner: Chip8Runner,
@@ -20,6 +21,10 @@ impl Executor {
         }
     }
 
+    /// Poll the runner for updates.
+    ///
+    /// This should be called in the main loop to advance the emulation
+    /// when the debugger is in the "running" state.
     pub fn poll(&mut self, dt: f32) -> Result<Chip8RunnerResult, Chip8Error> {
         if !self.is_running {
             return Ok(Chip8RunnerResult::Ok);
@@ -29,6 +34,8 @@ impl Executor {
             .runner
             .update_with_breakpoints(dt, Some(&self.breakpoints));
 
+        // If a breakpoint is hit or an error occurs, execution is paused.
+        // This allows the debugger to stop exactly when a condition is met.
         if matches!(result, Err(_) | Ok(Chip8RunnerResult::HitBreakpoint)) {
             self.is_running = false;
         }
@@ -68,6 +75,7 @@ impl Executor {
         self.is_running = false;
     }
 
+    /// Execute a single instruction.
     pub fn step(&mut self) -> Result<CommandResult, Chip8Error> {
         self.runner.chip8_mut().cpu_cycle()?;
         Ok(CommandResult::Ok)
@@ -147,6 +155,8 @@ impl Executor {
         let end = MEMORY_SIZE.min(usize::from(offset) + usize::from(len));
         let data = &self.runner.chip8_ref().memory[usize::from(offset)..end];
 
+        // Reads a range of memory and decodes it into instructions.
+        // CHIP-8 instructions are 2 bytes long, so we chunk the memory by 2.
         let instructions = data
             .chunks_exact(2)
             .map(|chunk| {
