@@ -150,10 +150,10 @@ impl App {
 
             self.check_key_timeout();
 
-            if event::poll(Duration::from_millis(16))? {
-                if let Event::Key(key) = event::read()? {
-                    self.handle_key_event(key);
-                }
+            if event::poll(Duration::from_millis(16))?
+                && let Event::Key(key) = event::read()?
+            {
+                self.handle_key_event(key);
             }
         }
 
@@ -272,7 +272,7 @@ impl App {
                             .enumerate()
                             .map(|(i, byte)| {
                                 if i % 16 == 0 {
-                                    format!("\n{:03X}: {byte:02X} ", offset + i as u16)
+                                    format!("\n{:03X}: {byte:02X} ", offset.wrapping_add(i as u16))
                                 } else {
                                     format!("{byte:02X} ")
                                 }
@@ -290,7 +290,10 @@ impl App {
                             .iter()
                             .enumerate()
                             .map(|(i, (ins, opcode))| {
-                                format!("{:03X}: {ins:04X} - {opcode:X?}\n", offset + i as u16 * 2)
+                                format!(
+                                    "{:03X}: {ins:04X} - {opcode:X?}\n",
+                                    offset.wrapping_add((i * 2) as u16)
+                                )
                             })
                             .collect(),
                         false,

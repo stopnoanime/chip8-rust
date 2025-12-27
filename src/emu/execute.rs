@@ -1,7 +1,7 @@
 use super::{
     Chip8, Chip8Error, Chip8Result, DISPLAY_X, DISPLAY_Y, FONT_START_ADDRESS, Opcode, OpcodeALU,
 };
-use crate::u4;
+use crate::{u4, u12};
 
 impl Chip8 {
     pub(crate) fn execute(&mut self, opcode: Opcode) -> Result<Chip8Result, Chip8Error> {
@@ -92,23 +92,23 @@ impl Chip8 {
             }
             Opcode::FontChar { x } => {
                 let digit = self.v[x] & 0x0F;
-                self.i = FONT_START_ADDRESS as u16 + digit as u16 * 5;
+                self.i = u12::new(FONT_START_ADDRESS as u16 + digit as u16 * 5);
             }
             Opcode::BCD { x } => {
                 let value = self.v[x];
-                *self.mem_get(self.i)? = value / 100;
-                *self.mem_get(self.i.wrapping_add(1))? = (value / 10) % 10;
-                *self.mem_get(self.i.wrapping_add(2))? = value % 10;
+                self.memory[self.i] = value / 100;
+                self.memory[self.i.wrapping_add(1)] = (value / 10) % 10;
+                self.memory[self.i.wrapping_add(2)] = value % 10;
             }
             Opcode::StoreRegs { x } => {
                 for reg_index in 0..=usize::from(x) {
-                    *self.mem_get(self.i)? = self.v[reg_index];
+                    self.memory[self.i] = self.v[reg_index];
                     self.i = self.i.wrapping_add(1);
                 }
             }
             Opcode::LoadRegs { x } => {
                 for reg_index in 0..=usize::from(x) {
-                    self.v[reg_index] = *self.mem_get(self.i)?;
+                    self.v[reg_index] = self.memory[self.i];
                     self.i = self.i.wrapping_add(1);
                 }
             }
@@ -177,7 +177,7 @@ impl Chip8 {
 
         let mut any_erased = false;
         for row in 0..row_count {
-            let sprite_byte = *self.mem_get(self.i.wrapping_add(row as u16))?;
+            let sprite_byte = self.memory[self.i.wrapping_add(row as u16)];
 
             for col in 0..col_count {
                 // If current sprite bit is non-zero

@@ -1,4 +1,4 @@
-use crate::u4;
+use crate::{u4, u12};
 
 /// CHIP-8 instruction opcodes.
 ///
@@ -6,12 +6,11 @@ use crate::u4;
 #[derive(Debug)]
 pub enum Opcode {
     /// 1nnn - Jump to location nnn.
-    Jump { nnn: u16 },
+    Jump { nnn: u12 },
     /// Bnnn - Jump to location nnn + V0.
-    JumpWithOffset { nnn: u16 },
-
+    JumpWithOffset { nnn: u12 },
     /// 2nnn - Call subroutine at nnn.
-    Call { nnn: u16 },
+    Call { nnn: u12 },
     /// 00EE - Return from a subroutine.
     Return,
 
@@ -29,7 +28,7 @@ pub enum Opcode {
     /// 7xnn - Set Vx = Vx + nn.
     AddRegImm { x: u4, nn: u8 },
     /// Annn - Set I = nnn.
-    SetIndexImm { nnn: u16 },
+    SetIndexImm { nnn: u12 },
     /// Fx1E - Set I = I + Vx.
     AddIndexReg { x: u4 },
 
@@ -110,7 +109,7 @@ impl Opcode {
         let y = u4::new(nibble.2);
         let n = u4::new(nibble.3);
         let nn = (opcode & 0x00FF) as u8;
-        let nnn = opcode & 0x0FFF;
+        let nnn = u12::new(opcode & 0x0FFF);
 
         match (nibble.0, nibble.1, nibble.2, nibble.3) {
             (0x0, 0x0, 0xE, 0x0) => Opcode::ClearDisplay,

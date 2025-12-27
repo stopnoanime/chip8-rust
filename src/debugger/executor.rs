@@ -1,11 +1,14 @@
 use super::commands::{BreakpointAction, Command, CommandResult};
-use crate::emu::{Chip8Error, Chip8Runner, Chip8RunnerResult, Display, MEMORY_SIZE, Opcode};
+use crate::{
+    emu::{Chip8Error, Chip8Runner, Chip8RunnerResult, Display, MEMORY_SIZE, Opcode},
+    u12,
+};
 use std::collections::HashSet;
 
 pub struct Executor {
     is_running: bool,
     runner: Chip8Runner,
-    breakpoints: HashSet<u16>,
+    breakpoints: HashSet<u12>,
 }
 
 impl Executor {
@@ -78,11 +81,11 @@ impl Executor {
         &self.runner.chip8_ref().display
     }
 
-    pub fn get_pc(&self) -> u16 {
+    pub fn get_pc(&self) -> u12 {
         self.runner.chip8_ref().pc
     }
 
-    pub fn get_i(&self) -> u16 {
+    pub fn get_i(&self) -> u12 {
         self.runner.chip8_ref().i
     }
 
@@ -90,7 +93,7 @@ impl Executor {
         &self.runner.chip8_ref().v
     }
 
-    pub fn get_stack(&self) -> &Vec<u16> {
+    pub fn get_stack(&self) -> &Vec<u12> {
         &self.runner.chip8_ref().stack
     }
 
@@ -123,7 +126,7 @@ impl Executor {
             }
             BreakpointAction::List => {
                 return CommandResult::Breakpoints({
-                    let mut bps: Vec<u16> = self.breakpoints.iter().cloned().collect();
+                    let mut bps: Vec<u12> = self.breakpoints.iter().cloned().collect();
                     bps.sort();
                     bps
                 });
@@ -133,30 +136,25 @@ impl Executor {
         CommandResult::Ok
     }
 
-    fn handle_mem(&self, offset: u16, len: u16) -> CommandResult {
-        let end = MEMORY_SIZE.min(offset as usize + len as usize);
-        let data = self.runner.chip8_ref().memory[offset as usize..end].to_vec();
+    fn handle_mem(&self, offset: u12, len: u12) -> CommandResult {
+        let end = MEMORY_SIZE.min(usize::from(offset) + usize::from(len));
+        let data = self.runner.chip8_ref().memory[usize::from(offset)..end].to_vec();
 
         CommandResult::MemDump { data, offset }
     }
 
-    fn handle_disasm(&self, offset: u16, len: u16) -> CommandResult {
-        let end = MEMORY_SIZE.min(offset as usize + len as usize);
-        let mut instructions = Vec::new();
-        let mut pc = offset as usize;
+    fn handle_disasm(&self, offset: u12, len: u12) -> CommandResult {
+        let end = MEMORY_SIZE.min(usize::from(offset) + usize::from(len));
+        let data = &self.runner.chip8_ref().memory[usize::from(offset)..end];
 
-        while pc < end {
-            let value = u16::from_be_bytes(
-                self.runner.chip8_ref().memory[pc..pc + 2]
-                    .try_into()
-                    .unwrap(),
-            );
-
-            let opcode = Opcode::decode(value);
-
-            instructions.push((value, opcode));
-            pc += 2;
-        }
+        let instructions = data
+            .chunks_exact(2)
+            .map(|chunk| {
+                let value = u16::from_be_bytes([chunk[0], chunk[1]]);
+                let opcode = Opcode::decode(value);
+                (value, opcode)
+            })
+            .collect();
 
         CommandResult::Disasm {
             instructions,

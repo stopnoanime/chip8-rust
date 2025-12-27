@@ -13,9 +13,6 @@ pub enum Chip8Error {
     #[error("ROM is too large ({size} bytes), max size is {max_size} bytes")]
     RomLoadError { size: usize, max_size: usize },
 
-    #[error("Memory access out of bounds at address {address:#06X}")]
-    MemoryOutOfBounds { address: u16 },
-
     #[error("Stack underflow: attempted to return from a subroutine with empty call stack")]
     StackUnderflow,
 

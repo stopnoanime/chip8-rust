@@ -2,7 +2,7 @@ use clap::{Args, Parser, Subcommand};
 use clap_num::{maybe_hex, maybe_hex_range};
 
 use crate::emu::Opcode;
-use crate::u4;
+use crate::{u4, u12};
 
 /// CHIP-8 Debugger Command Line Interface
 #[derive(Parser)]
@@ -68,7 +68,7 @@ pub enum Command {
     SetI {
         /// The value
         #[arg(value_parser = u12_parse)]
-        value: u16,
+        value: u12,
     },
 
     /// Set the program counter
@@ -76,7 +76,7 @@ pub enum Command {
     SetPc {
         /// The value
         #[arg(value_parser = u12_parse)]
-        value: u16,
+        value: u12,
     },
 
     /// Set key state
@@ -112,7 +112,7 @@ pub enum Command {
     Push {
         /// The value
         #[arg(value_parser = u12_parse)]
-        value: u16,
+        value: u12,
     },
 
     /// Pop value from the stack
@@ -122,14 +122,14 @@ pub enum Command {
 
 pub enum CommandResult {
     Ok,
-    Breakpoints(Vec<u16>),
+    Breakpoints(Vec<u12>),
     MemDump {
         data: Vec<u8>,
-        offset: u16,
+        offset: u12,
     },
     Disasm {
         instructions: Vec<(u16, Opcode)>,
-        offset: u16,
+        offset: u12,
     },
     Quit,
 }
@@ -141,7 +141,7 @@ pub enum BreakpointAction {
     Set {
         /// The address
         #[arg(value_parser = u12_parse)]
-        addr: u16,
+        addr: u12,
     },
 
     /// Clear a breakpoint at an address
@@ -149,7 +149,7 @@ pub enum BreakpointAction {
     Clear {
         /// The address
         #[arg(value_parser = u12_parse)]
-        addr: u16,
+        addr: u12,
     },
 
     /// List all breakpoints
@@ -165,15 +165,15 @@ pub enum BreakpointAction {
 pub struct MemArgs {
     /// Starting memory address
     #[arg(value_parser = u12_parse)]
-    pub offset: u16,
+    pub offset: u12,
 
     /// Number of bytes to display
     #[arg(default_value = "32", value_parser = u12_parse)]
-    pub len: u16,
+    pub len: u12,
 }
 
-fn u12_parse(s: &str) -> Result<u16, String> {
-    maybe_hex_range(s, 0, 0xFFF)
+fn u12_parse(s: &str) -> Result<u12, String> {
+    maybe_hex_range(s, 0, 0xFFF).map(u12::new)
 }
 
 fn u4_parse(s: &str) -> Result<u4, String> {

@@ -1,5 +1,5 @@
 use super::{Chip8, Chip8Error, Chip8Result};
-use crate::u4;
+use crate::{u4, u12};
 use std::collections::HashSet;
 
 const CPU_HZ: f32 = 700.0;
@@ -41,7 +41,7 @@ impl Chip8Runner {
     pub fn update_with_breakpoints(
         &mut self,
         dt: f32,
-        breakpoints: Option<&HashSet<u16>>,
+        breakpoints: Option<&HashSet<u12>>,
     ) -> Result<Chip8RunnerResult, Chip8Error> {
         self.cpu_dt_accumulator += dt;
         self.timer_dt_accumulator += dt;

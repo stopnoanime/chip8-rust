@@ -2,7 +2,7 @@ use super::{
     Chip8Error, Chip8Result, DISPLAY_X, DISPLAY_Y, Display, FONT, FONT_END_ADDRESS,
     FONT_START_ADDRESS, Opcode,
 };
-use crate::u4;
+use crate::{u4, u12};
 
 // The constants are specified by the CHIP-8 specification
 const ROM_START_ADDRESS: usize = 0x200;
@@ -15,14 +15,14 @@ pub struct Chip8 {
     /// Display buffer: 64x32 monochrome pixels
     pub(crate) display: Display<bool>,
 
-    /// Program counter: address of the next instruction to execute
-    pub(crate) pc: u16,
-    /// Index register: used for memory operations
-    pub(crate) i: u16,
     /// General-purpose registers V0-VF (VF is used as a flag register)
     pub(crate) v: [u8; 16],
+    /// Program counter: address of the next instruction to execute
+    pub(crate) pc: u12,
+    /// Index register: used for memory operations
+    pub(crate) i: u12,
     /// Call stack for subroutine returns
-    pub(crate) stack: Vec<u16>,
+    pub(crate) stack: Vec<u12>,
 
     /// Delay timer: decrements at 60Hz until it reaches 0
     pub(crate) delay_timer: u8,
@@ -40,9 +40,9 @@ impl Chip8 {
         Chip8 {
             memory: [0; MEMORY_SIZE],
             display: [[false; DISPLAY_X]; DISPLAY_Y],
-            pc: ROM_START_ADDRESS as u16,
-            i: 0,
             v: [0; 16],
+            pc: u12::new(ROM_START_ADDRESS as u16),
+            i: u12::new(0),
             stack: Vec::new(),
             delay_timer: 0,
             sound_timer: 0,
@@ -67,16 +67,14 @@ impl Chip8 {
             .copy_from_slice(rom);
 
         // Set program counter to start of ROM
-        self.pc = ROM_START_ADDRESS as u16;
+        self.pc = u12::new(ROM_START_ADDRESS as u16);
 
         Ok(())
     }
 
     /// Executes a single CPU cycle (fetch, decode, execute).
     pub fn cpu_cycle(&mut self) -> Result<Chip8Result, Chip8Error> {
-        let opcode = self.fetch()?;
-        let decoded_opcode = Opcode::decode(opcode);
-        self.execute(decoded_opcode)
+        self.execute(Opcode::decode(self.fetch()))
     }
 
     /// Updates the delay and sound timers. Should be called at 60Hz.
@@ -101,18 +99,11 @@ impl Chip8 {
     }
 
     /// Fetches the next 16-bit opcode from memory.
-    fn fetch(&mut self) -> Result<u16, Chip8Error> {
-        let high = *self.mem_get(self.pc)?;
-        let low = *self.mem_get(self.pc.wrapping_add(1))?;
+    fn fetch(&self) -> u16 {
+        let high = self.memory[self.pc];
+        let low = self.memory[self.pc.wrapping_add(1)];
 
-        Ok(u16::from_be_bytes([high, low]))
-    }
-
-    /// Helper to get a mutable reference to a memory location with bounds checking.
-    pub(crate) fn mem_get(&mut self, addr: u16) -> Result<&mut u8, Chip8Error> {
-        self.memory
-            .get_mut(addr as usize)
-            .ok_or(Chip8Error::MemoryOutOfBounds { address: addr })
+        u16::from_be_bytes([high, low])
     }
 }
 
