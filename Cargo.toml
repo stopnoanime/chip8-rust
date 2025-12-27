@@ -1,0 +1,17 @@
+[package]
+name = "chip8-rust"
+version = "0.1.0"
+edition = "2024"
+default-run = "emu"
+
+[dependencies]
+anyhow = "1.0.100"
+clap = { version = "4.5.53", features = ["derive", "wrap_help"] }
+clap-num = "1.2.0"
+crossterm = "0.29.0"
+pixels = "0.15.0"
+rand = "0.9.2"
+ratatui = "0.30.0"
+rodio = { version = "0.21.1", default-features = false, features = ["playback"]}
+thiserror = "2.0.17"
+winit = "0.30.12"
