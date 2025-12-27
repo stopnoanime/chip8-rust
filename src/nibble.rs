@@ -1,5 +1,5 @@
-use std::ops::{Index, IndexMut};
 use std::fmt;
+use std::ops::{Index, IndexMut};
 
 /// A 4-bit unsigned integer (nibble).
 #[derive(Clone, Copy)]

@@ -496,9 +496,13 @@ impl App {
 ///
 /// Throughout the program all values are displayed in hex.
 /// Input values can be decimal or hex (with 0x prefix).
+/// When paused, Escape or Ctrl+C is used to exit the debugger and up arrow/down arrow to scroll output.
+/// When paused, enter executes the last command if input is empty.
+/// When running, keys 1-4, Q-R, A-F, Z-V map to CHIP-8 keys, and Escape pauses the debugger.
 #[derive(Parser)]
+#[command(max_term_width = 100)]
 struct Args {
-    /// Path to the ROM file to load
+    /// Path to the CHIP-8 ROM file
     rom_path: PathBuf,
 }
 
