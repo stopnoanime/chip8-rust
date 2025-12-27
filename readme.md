@@ -1,9 +1,9 @@
-# CHIP-8 Emulator
+# CHIP8-RUST
 
-![Screenshot](./screenshot.png)
-This is a CHIP-8 emulator written in Rust.
+This is a CHIP-8 emulator and debugger written in Rust.
 
 ## Emulator (`emu`)
+![Screenshot](./emu.png)
 
 To run the emulator:
 
@@ -17,6 +17,7 @@ cargo run -- <rom_path>
 - `Escape`: Exit the emulator
 
 ## Debugger (`dbg`)
+![Screenshot](./dbg.png)
 
 To run the debugger:
 
