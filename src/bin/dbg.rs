@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::Context;
-use clap::Parser;
+use clap::{Parser, error::ErrorKind};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
@@ -12,7 +12,10 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Paragraph, Widget, Wrap},
+    widgets::{
+        Block, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget,
+        Wrap,
+    },
 };
 
 use chip8_rust::{
@@ -44,10 +47,67 @@ const KEY_MAP: [KeyCode; 16] = [
 // To handle this, we implement a timeout after which we consider a key released.
 const KEY_RELEASE_TIMEOUT: Duration = Duration::from_millis(50);
 
+struct OutputBox {
+    content: String,
+    is_error: bool,
+    scroll_state: ScrollbarState,
+}
+
+impl OutputBox {
+    fn new(content: String) -> Self {
+        Self {
+            scroll_state: ScrollbarState::new(content.lines().count()),
+            is_error: false,
+            content,
+        }
+    }
+
+    fn set(&mut self, content: String, is_error: bool) {
+        *self = Self::new(content);
+        self.is_error = is_error;
+    }
+
+    fn set_str(&mut self, content: &str, is_error: bool) {
+        self.set(content.to_string(), is_error);
+    }
+
+    fn up(&mut self) {
+        self.scroll_state.prev();
+    }
+
+    fn down(&mut self) {
+        self.scroll_state.next();
+    }
+}
+
+impl Widget for &OutputBox {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        Paragraph::new(self.content.as_str())
+            .wrap(Wrap { trim: true })
+            .scroll((self.scroll_state.get_position() as u16, 0))
+            .block(
+                Block::bordered()
+                    .border_style(Style::new().fg(if self.is_error {
+                        Color::Red
+                    } else {
+                        Color::White
+                    }))
+                    .title(" Output "),
+            )
+            .render(area, buf);
+
+        Scrollbar::new(ScrollbarOrientation::VerticalRight).render(
+            area,
+            buf,
+            &mut self.scroll_state.clone(),
+        );
+    }
+}
+
 struct App {
     executor: Executor,
     input: String,
-    output: String,
+    output: OutputBox,
     should_quit: bool,
     last_tick: Instant,
     last_command: Option<Command>,
@@ -64,7 +124,7 @@ impl App {
         Ok(Self {
             executor: Executor::new(Chip8Runner::new(chip8)),
             input: String::new(),
-            output: String::new(),
+            output: OutputBox::new("Enter 'help' for a list of commands.".to_string()),
             should_quit: false,
             last_tick: Instant::now(),
             last_command: None,
@@ -80,11 +140,9 @@ impl App {
             // Handles execution when debugger is in running mode
             match self.executor.poll(dt) {
                 Ok(Chip8RunnerResult::HitBreakpoint) => {
-                    self.output = "Hit breakpoint".to_string();
+                    self.output.set_str("Hit breakpoint", false)
                 }
-                Err(e) => {
-                    self.output = e.to_string();
-                }
+                Err(e) => self.output.set(e.to_string(), true),
                 _ => {}
             }
 
@@ -132,7 +190,7 @@ impl App {
             match key.code {
                 KeyCode::Esc => {
                     self.executor.pause();
-                    self.output = "Paused".to_string();
+                    self.output.set_str("Paused", false);
                 }
                 _ => {
                     if let Some(idx) = KEY_MAP.iter().position(|&k| k == key.code) {
@@ -148,6 +206,12 @@ impl App {
                 }
                 KeyCode::Enter => {
                     self.handle_enter();
+                }
+                KeyCode::Up => {
+                    self.output.up();
+                }
+                KeyCode::Down => {
+                    self.output.down();
                 }
                 KeyCode::Char(c) => {
                     self.input.push(c);
@@ -170,8 +234,9 @@ impl App {
                     self.execute_command(cli.command);
                 }
                 Err(e) => {
-                    self.output = e.to_string();
                     self.last_command = None;
+                    self.output
+                        .set(e.to_string(), e.kind() != ErrorKind::DisplayHelp);
                 }
             }
         }
@@ -183,49 +248,57 @@ impl App {
         match self.executor.execute(command) {
             Ok(result) => match result {
                 chip8_rust::debugger::CommandResult::Ok => {
-                    self.output = "OK".to_string();
+                    self.output.set_str("OK", false);
                 }
                 chip8_rust::debugger::CommandResult::Quit => {
                     self.should_quit = true;
                 }
                 chip8_rust::debugger::CommandResult::Breakpoints(breakpoints) => {
-                    self.output = if breakpoints.is_empty() {
-                        "No breakpoints set".to_string()
+                    if breakpoints.is_empty() {
+                        self.output.set_str("No breakpoints set", false);
                     } else {
-                        breakpoints
-                            .iter()
-                            .map(|b| format!("Breakpoint: {b:#05X}\n"))
-                            .collect()
+                        self.output.set(
+                            breakpoints
+                                .iter()
+                                .map(|b| format!("Breakpoint: {b:#05X}\n"))
+                                .collect(),
+                            false,
+                        )
                     };
                 }
                 chip8_rust::debugger::CommandResult::MemDump { data, offset } => {
-                    self.output = data
-                        .iter()
-                        .enumerate()
-                        .map(|(i, byte)| {
-                            if i % 16 == 0 {
-                                format!("\n{:03X}: {byte:02X} ", offset + i as u16)
-                            } else {
-                                format!("{byte:02X} ")
-                            }
-                        })
-                        .collect();
+                    self.output.set(
+                        data.iter()
+                            .enumerate()
+                            .map(|(i, byte)| {
+                                if i % 16 == 0 {
+                                    format!("\n{:03X}: {byte:02X} ", offset + i as u16)
+                                } else {
+                                    format!("{byte:02X} ")
+                                }
+                            })
+                            .collect(),
+                        false,
+                    );
                 }
                 chip8_rust::debugger::CommandResult::Disasm {
                     instructions,
                     offset,
                 } => {
-                    self.output = instructions
-                        .iter()
-                        .enumerate()
-                        .map(|(i, (ins, opcode))| {
-                            format!("{:03X}: {ins:04X} - {opcode:X?}\n", offset + i as u16 * 2)
-                        })
-                        .collect();
+                    self.output.set(
+                        instructions
+                            .iter()
+                            .enumerate()
+                            .map(|(i, (ins, opcode))| {
+                                format!("{:03X}: {ins:04X} - {opcode:X?}\n", offset + i as u16 * 2)
+                            })
+                            .collect(),
+                        false,
+                    );
                 }
             },
             Err(e) => {
-                self.output = e.to_string();
+                self.output.set(e.to_string(), true);
             }
         }
     }
@@ -277,8 +350,8 @@ impl Widget for &App {
         self.render_registers(registers, buf);
         self.render_keypad(keypad, buf);
         self.render_stack(stack, buf);
-        self.render_output(output, buf);
         self.render_input(input, buf);
+        self.output.render(output, buf);
     }
 }
 
@@ -362,13 +435,6 @@ impl App {
             .render(area, buf);
     }
 
-    fn render_output(&self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new(self.output.as_str())
-            .wrap(Wrap { trim: true })
-            .block(Block::bordered().title(" Output "))
-            .render(area, buf);
-    }
-
     fn render_input(&self, area: Rect, buf: &mut Buffer) {
         Paragraph::new(self.input.as_str())
             .block(Block::bordered().title(" Command "))
@@ -427,6 +493,9 @@ impl App {
 }
 
 /// TUI debugger for CHIP-8
+///
+/// Throughout the program all values are displayed in hex.
+/// Input values can be decimal or hex (with 0x prefix).
 #[derive(Parser)]
 struct Args {
     /// Path to the ROM file to load
